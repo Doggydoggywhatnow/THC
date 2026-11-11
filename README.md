@@ -21,6 +21,7 @@ THC is a graphical interface for your local media, written in C. It shows what's
 - [Supported formats](#supported-formats)
 - [Platforms](#platforms)
 - [How it works](#how-it-works)
+- [Watch tracking and MPV configuration](#watch-tracking-and-mpv-configuration)
 - [Building from source](#building-from-source)
 - [Usage](#usage)
 - [Configuration](#configuration)
@@ -144,6 +145,33 @@ THC is a graphical layer on top of proven components:
 - **Playback state** (last position and watched status) is stored locally on your device and never transmitted.
 
 THC has its own separate area for configuring the MPV it uses. That means you can keep MPV installed standalone with your own settings, and THC's setup won't interfere with it (and vice versa).
+
+## Watch tracking and MPV configuration
+
+THC embeds MPV through **libmpv**, so it can track your viewing without taking anything away from MPV.
+
+### Tracking watch times
+
+1. **Resume:** when you play a file, THC looks up its saved position and starts MPV there using MPV's `start` option.
+2. **Observe:** while the file plays, THC watches MPV's own properties (`time-pos`, `duration`, `pause`, and `eof-reached`) and listens for MPV's playback events (such as end-of-file).
+3. **Save:** THC writes your position to its local SQLite database periodically, and also on pause, on stop, and when you quit, so a crash loses at most a few seconds.
+4. **Mark as watched:** when you reach the end of a file (or pass a watched threshold), THC records it as watched and shows the checkmark. The threshold will be configurable. *(planned)*
+
+THC only reads these properties. It doesn't change playback, and it never writes into your media files.
+
+### Keeping every MPV setting
+
+Because THC runs real MPV underneath, **all of MPV's config options remain available**: `mpv.conf`, `input.conf`, scripts, shaders, profiles, and any option you could pass on MPV's command line. Anything you'd normally set in MPV works in THC, and playback is tracked on top of it.
+
+### THC's MPV is separate from your MPV
+
+THC has its **own MPV configuration directory**, used only by THC. THC points libmpv at that directory instead of your system's MPV config folder, which means:
+
+- THC never reads or changes your standalone MPV's config, scripts, or watch-later data.
+- Your standalone MPV never picks up THC's settings.
+- You can keep MPV installed on its own with one setup, and run THC with a completely different one.
+
+Want THC to start from your existing MPV setup? Copy your config files into THC's MPV configuration directory. The two stay independent afterward.
 
 ## Building from source
 
