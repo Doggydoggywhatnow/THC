@@ -260,6 +260,33 @@ THC has its **own MPV configuration directory**, used only by THC. THC points li
 
 Want THC to start from your existing MPV setup? Copy your config files into THC's MPV configuration directory. The two stay independent afterward.
 
+### Where THC's MPV files go
+
+THC's MPV folder is `~/.local/share/THC/THC/mpv/` on Linux (Settings → MPV → Open folder shows the exact path on any OS). It uses the same layout as MPV's own config folder:
+
+```
+mpv/
+├── mpv.conf          options
+├── input.conf        key bindings
+├── script-opts/      settings for scripts, one <script>.conf file each (for example osc.conf)
+├── scripts/          your Lua, JavaScript and C scripts
+├── shaders/          shaders; "~~/shaders/x.glsl" in mpv.conf points here
+└── fonts/
+```
+
+**Controller (OSC) settings go in `script-opts/osc.conf`, not `mpv.conf`.** Settings such as `layout` belong to MPV's on-screen controller script, which reads them from its own file. They are not MPV options, so on a line in `mpv.conf` MPV only logs "option not found" and skips it. For example, to put the controller at the top, create `script-opts/osc.conf` containing:
+
+```
+layout=topbar
+```
+
+Other values are `bottombar` (the default), `box` and `slimbox`. The same file takes the controller's other options, such as `windowcontrols`, `seekbarstyle`, `boxalpha` and `hidetimeout`; see the *On Screen Controller* section of the [MPV manual](https://mpv.io/manual/master/) for the full list. Restart THC fully after changing it. The controller only appears while the mouse moves over the video.
+
+If a line in `mpv.conf` does nothing, run `THC_MPV_LOG=1 thc` in a terminal: MPV prints `Error parsing option ... (option not found)` for lines it does not recognize.
+
+A few options are fixed by THC so its watch history stays correct, and `mpv.conf` cannot change them: `resume-playback`, `save-position-on-quit`, `watch-later-directory` and the start position. THC keeps your place itself.
+
+
 ## Downloads
 
 Linux packages for **v0.1.1** (x86-64) are rebuilt by CI on every push to `dev` and stored in the [`downloads/`](https://github.com/Doggydoggywhatnow/THC/tree/dev/downloads) folder.
