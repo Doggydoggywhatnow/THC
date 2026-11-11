@@ -3,6 +3,7 @@
  * code path as real playback, and reads the settings back from libmpv.
  * Needs libmpv at run time; skips (and passes) when it is not installed. */
 #include "mpv_dyn.h"
+#include "mpvconf.h"
 #include "video.h"
 #include "test_util.h"
 
@@ -99,6 +100,11 @@ static void check_script(VideoSession *s)
     CHECK_NEAR(v, 23);
 }
 
+static int real_setter(void *ud, const char *name, const char *value)
+{
+    return api.set_option_string((mpv_handle *)ud, name, value);
+}
+
 int main(void)
 {
     memset(&api, 0, sizeof api);
@@ -106,6 +112,27 @@ int main(void)
         printf("SKIP: libmpv not found\n");
         return 0;
     }
+    /* the config check against real libmpv, with a config that has OSC lines in the wrong file */
+    {
+        const char *text =
+            "profile=high-quality\nhwdec=vaapi\nsave-position-on-quit=yes\nlayout=topbar\nosc-border=yes\n"
+            "osc-window-control=quit\ndrag-to-pan=yes\nscreenshot-format=png\ndeband=no\n"
+            "glsl-shader=\"~~/shaders/hdeband.glsl\"\n";
+        mpv_handle *h = api.create();
+        MpvConfIssue is[16];
+        int n = h ? mpvconf_check(text, real_setter, h, is, 16) : -1;
+        if (h) api.terminate_destroy(h);
+        if (n != 5) for (int i = 0; i < n; i++) fprintf(stderr, "issue: line %d %s kind %d\n", is[i].line, is[i].option, is[i].kind);
+        CHECK(n == 5);
+        if (n == 5) {
+            CHECK(is[0].line == 3 && is[0].kind == MCK_THC_CONTROLLED);
+            CHECK(is[1].line == 4 && is[1].kind == MCK_OSC_OPTION);
+            CHECK(is[2].line == 5 && is[2].kind == MCK_OSC_OPTION);
+            CHECK(is[3].line == 6 && is[3].kind == MCK_OSC_OPTION);
+            CHECK(is[4].line == 7 && is[4].kind == MCK_NOT_FOUND);   /* drag-to-pan: not in this MPV */
+        }
+    }
+
     /* a "system" mpv setup that THC must never read */
     SDL_CreateDirectory("mpvcfg_sys");
     SDL_CreateDirectory("mpvcfg_sys/mpv");

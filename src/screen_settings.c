@@ -1,6 +1,7 @@
 /* screen_settings.c: everything the user can change, grouped by topic. */
 #include "app.h"
 #include "hotkeys.h"
+#include "mpvconf.h"
 
 #include <string.h>
 
@@ -372,23 +373,281 @@ static void page_hotkeys(App *a, Layout *L)
     note(a, L, ICON_FILM, "Keys inside the video window come from MPV. Change them in input.conf in THC's MPV folder.");
 }
 
-static void write_template(App *a, const char *name, const char *body)
+/* ---- helpers for the MPV page: copy paths, osc.conf, shaders, config check ---- */
+
+static void copy_text(App *a, const char *text, const char *what)
 {
-    char path[THC_PATH_MAX];
-    SDL_snprintf(path, sizeof path, "%s/%s", a->mpv_dir, name);
-    SDL_PathInfo info;
-    if (SDL_GetPathInfo(path, &info)) {
-        app_toast(a, "%s already exists", name);
-        return;
-    }
+    if (SDL_SetClipboardText(text)) app_toast(a, "Copied %s", what);
+    else app_toast(a, "Could not copy to the clipboard");
+}
+
+/* Whole text file, NUL-terminated (caller frees with SDL_free), or NULL. */
+static char *read_text(const char *path)
+{
+    size_t len = 0;
+    void *d = SDL_LoadFile(path, &len);
+    if (!d) return NULL;
+    char *t = SDL_malloc(len + 1);
+    if (t) { memcpy(t, d, len); t[len] = 0; }
+    SDL_free(d);
+    return t;
+}
+
+static void mpv_path(App *a, const char *rel, char *out, size_t cap)
+{
+    SDL_snprintf(out, cap, "%s/%s", a->mpv_dir, rel);
+}
+
+static void write_text(App *a, const char *rel, const char *text)
+{
+    char path[THC_PATH_MAX + 64];
+    mpv_path(a, rel, path, sizeof path);
     SDL_IOStream *io = SDL_IOFromFile(path, "wb");
-    if (!io) {
-        app_toast(a, "Could not create %s", name);
-        return;
-    }
-    SDL_WriteIO(io, body, strlen(body));
+    if (!io) { app_toast(a, "Could not write %s", rel); return; }
+    SDL_WriteIO(io, text, strlen(text));
     SDL_CloseIO(io);
-    app_toast(a, "Created %s", name);
+}
+
+/* A row for one file or folder in THC's MPV folder: its path, Copy path, and Create if missing. */
+static void path_row(App *a, Layout *L, const char *rel, const char *what, const char *tmpl)
+{
+    Ui *ui = &a->ui;
+    const Theme *t = &ui->th;
+    char full[THC_PATH_MAX + 64];
+    mpv_path(a, rel, full, sizeof full);
+    SDL_PathInfo info;
+    bool exists = SDL_GetPathInfo(full, &info);
+    SDL_FRect r = next_row(a, L, dp(ui, 72));
+    ui_fill(ui, r, t->surface, dp(ui, 12));
+    if (t->high_contrast) ui_stroke(ui, r, t->border, dp(ui, 12), dp(ui, 1));
+    float bw = dp(ui, 130), bh = dp(ui, 40), pad = dp(ui, 14);
+    float reserve = bw * (exists || !tmpl ? 1 : 2) + pad * 3;
+    char title[160];
+    SDL_snprintf(title, sizeof title, "%s%s", rel, exists ? "" : "  (not created yet)");
+    ui_text_fit(ui, FONT_BOLD, TS_LABEL, r.x + dp(ui, 16), r.y + dp(ui, 12), r.w - reserve, t->text, title);
+    ui_text_fit(ui, FONT_REGULAR, TS_SMALL, r.x + dp(ui, 16), r.y + dp(ui, 14) + ui_line_h(ui, TS_LABEL), r.w - reserve,
+                t->text_dim, exists ? full : what);
+    float bx = r.x + r.w - pad - bw;
+    char id[200];
+    SDL_snprintf(id, sizeof id, "mpv-copy:%s", rel);
+    if (ui_button(ui, ui_id(id), (SDL_FRect){ bx, r.y + (r.h - bh) / 2, bw, bh }, "Copy path", ICON_NONE, false))
+        copy_text(a, full, rel);
+    if (!exists && tmpl) {
+        bx -= bw + pad;
+        SDL_snprintf(id, sizeof id, "mpv-make:%s", rel);
+        if (ui_button(ui, ui_id(id), (SDL_FRect){ bx, r.y + (r.h - bh) / 2, bw, bh }, "Create", ICON_PLUS, false)) {
+            char dir[THC_PATH_MAX + 64];
+            SDL_strlcpy(dir, full, sizeof dir);
+            char *slash = SDL_strrchr(dir, '/');
+            if (slash) { *slash = 0; SDL_CreateDirectory(dir); }
+            write_text(a, rel, tmpl);
+            app_toast(a, "Created %s", rel);
+        }
+    }
+}
+
+/* ---- config check ---- */
+
+typedef struct CheckCtx { const MpvApi *api; mpv_handle *h; } CheckCtx;
+
+static int check_setter(void *ud, const char *name, const char *value)
+{
+    CheckCtx *c = ud;
+    return c->api->set_option_string(c->h, name, value);
+}
+
+static MpvConfIssue g_issues[32];
+static int g_nissues;
+static bool g_checked, g_check_failed;
+static Uint64 g_check_mtime;
+static double g_check_poll;
+
+static void run_check(App *a)
+{
+    g_nissues = 0;
+    g_check_failed = false;
+    char path[THC_PATH_MAX + 64];
+    mpv_path(a, "mpv.conf", path, sizeof path);
+    SDL_PathInfo info;
+    g_check_mtime = SDL_GetPathInfo(path, &info) ? (Uint64)info.modify_time : 0;
+    g_checked = true;
+    char *text = read_text(path);
+    if (!text) return;
+    if (!a->have_mpv) { g_check_failed = true; SDL_free(text); return; }
+    /* ask a throw-away libmpv handle that is never initialized (no window, no playback) */
+    mpv_handle *h = a->mpv.create();
+    if (h) {
+        CheckCtx c = { &a->mpv, h };
+        g_nissues = mpvconf_check(text, check_setter, &c, g_issues, 32);
+        a->mpv.terminate_destroy(h);
+    } else {
+        g_check_failed = true;
+    }
+    SDL_free(text);
+}
+
+static void config_check(App *a, Layout *L)
+{
+    Ui *ui = &a->ui;
+    const Theme *t = &ui->th;
+    char path[THC_PATH_MAX + 64];
+    mpv_path(a, "mpv.conf", path, sizeof path);
+    SDL_PathInfo info;
+    Uint64 mt = SDL_GetPathInfo(path, &info) ? (Uint64)info.modify_time : 0;
+    if (!g_checked || (ui->time > g_check_poll && mt != g_check_mtime)) run_check(a);
+    if (ui->time > g_check_poll) g_check_poll = ui->time + 1.0;
+
+    group(a, L, "Config check",
+          "THC asks MPV about every line of your mpv.conf and lists the ones MPV skips. MPV itself only "
+          "prints these to a terminal.");
+    SDL_FRect r = next_row(a, L, dp(ui, 52));
+    ui_fill(ui, r, t->surface, dp(ui, 12));
+    const char *summary;
+    char buf[160];
+    UiIcon icon = ICON_CHECK;
+    if (!SDL_GetPathInfo(path, &info)) summary = "No mpv.conf yet, so there is nothing to check.";
+    else if (g_check_failed) summary = "Could not check: libmpv is not available.";
+    else if (g_nissues == 0) summary = "No problems found in mpv.conf.";
+    else {
+        SDL_snprintf(buf, sizeof buf, "%d line%s need attention", g_nissues, g_nissues == 1 ? "" : "s");
+        summary = buf;
+        icon = ICON_INFO;
+    }
+    ui_icon(ui, icon, (SDL_FRect){ r.x + dp(ui, 16), r.y + dp(ui, 14), dp(ui, 24), dp(ui, 24) },
+            icon == ICON_CHECK ? t->watched : t->accent);
+    ui_text_center(ui, FONT_BOLD, TS_LABEL, (SDL_FRect){ r.x + dp(ui, 52), r.y, r.w - dp(ui, 220), r.h }, t->text, summary, false);
+    if (ui_button(ui, ui_id("mpv-recheck"), (SDL_FRect){ r.x + r.w - dp(ui, 150), r.y + dp(ui, 6), dp(ui, 136), dp(ui, 40) },
+                  "Check again", ICON_NONE, false)) {
+        run_check(a);
+        app_toast(a, "Checked mpv.conf");
+    }
+    static const char *const k_kind[] = { "Skipped: no such option", "Skipped: value not accepted",
+                                          "Wrong file: belongs in osc.conf", "Ignored: THC controls this" };
+    for (int i = 0; i < g_nissues; i++) {
+        const MpvConfIssue *is = &g_issues[i];
+        SDL_FRect row = next_row(a, L, dp(ui, 92));
+        ui_fill(ui, row, t->surface, dp(ui, 12));
+        if (t->high_contrast) ui_stroke(ui, row, t->border, dp(ui, 12), dp(ui, 1));
+        float x = row.x + dp(ui, 16), w = row.w - dp(ui, 32);
+        char head[320];
+        SDL_snprintf(head, sizeof head, "Line %d:  %s=%s", is->line, is->option, is->value);
+        ui_text_fit(ui, FONT_BOLD, TS_BODY, x, row.y + dp(ui, 10), w, t->text, head);
+        ui_text_fit(ui, FONT_BOLD, TS_SMALL, x, row.y + dp(ui, 10) + ui_line_h(ui, TS_BODY), w, t->accent, k_kind[is->kind]);
+        ui_text_wrap(ui, FONT_REGULAR, TS_SMALL, x, row.y + dp(ui, 10) + ui_line_h(ui, TS_BODY) + ui_line_h(ui, TS_SMALL), w,
+                     t->text_dim, is->hint, 2);
+    }
+}
+
+/* ---- shaders ---- */
+
+typedef struct ShaderList { char name[24][96]; int n; } ShaderList;
+
+static SDL_EnumerationResult SDLCALL shader_cb(void *ud, const char *dirname, const char *fname)
+{
+    (void)dirname;
+    ShaderList *l = ud;
+    const char *dot = SDL_strrchr(fname, '.');
+    if (fname[0] == '.' || !dot || (SDL_strcasecmp(dot, ".glsl") && SDL_strcasecmp(dot, ".hook") && SDL_strcasecmp(dot, ".frag")))
+        return SDL_ENUM_CONTINUE;
+    if (l->n < 24) SDL_strlcpy(l->name[l->n++], fname, sizeof l->name[0]);
+    return SDL_ENUM_CONTINUE;
+}
+
+static void shaders_section(App *a, Layout *L)
+{
+    Ui *ui = &a->ui;
+    const Theme *t = &ui->th;
+    group(a, L, "GLSL shaders",
+          "Put shader files (.glsl) in the shaders folder, then load one from mpv.conf with "
+          "glsl-shaders-append=\"~~/shaders/name.glsl\". In THC, ~~/ means THC's own MPV folder, not your "
+          "standalone MPV's, so copy any shaders you use into it.");
+    char dir[THC_PATH_MAX + 64];
+    mpv_path(a, "shaders", dir, sizeof dir);
+    SDL_PathInfo info;
+    bool have = SDL_GetPathInfo(dir, &info) && info.type == SDL_PATHTYPE_DIRECTORY;
+    SDL_FRect r = next_row(a, L, dp(ui, 72));
+    ui_fill(ui, r, t->surface, dp(ui, 12));
+    if (t->high_contrast) ui_stroke(ui, r, t->border, dp(ui, 12), dp(ui, 1));
+    float bw = dp(ui, 130), bh = dp(ui, 40), pad = dp(ui, 14);
+    ui_text_fit(ui, FONT_BOLD, TS_LABEL, r.x + dp(ui, 16), r.y + dp(ui, 12), r.w - bw * 2 - pad * 4, t->text,
+                have ? "shaders" : "shaders  (not created yet)");
+    ui_text_fit(ui, FONT_REGULAR, TS_SMALL, r.x + dp(ui, 16), r.y + dp(ui, 14) + ui_line_h(ui, TS_LABEL),
+                r.w - bw * 2 - pad * 4, t->text_dim, dir);
+    float bx = r.x + r.w - pad - bw;
+    if (ui_button(ui, ui_id("shader-copy-dir"), (SDL_FRect){ bx, r.y + (r.h - bh) / 2, bw, bh }, "Copy path", ICON_NONE, false))
+        copy_text(a, dir, "shaders folder path");
+    bx -= bw + pad;
+    if (have) {
+        if (ui_button(ui, ui_id("shader-open"), (SDL_FRect){ bx, r.y + (r.h - bh) / 2, bw, bh }, "Open", ICON_FOLDER, false))
+            open_folder(a, dir);
+    } else if (ui_button(ui, ui_id("shader-make"), (SDL_FRect){ bx, r.y + (r.h - bh) / 2, bw, bh }, "Create", ICON_PLUS, false)) {
+        SDL_CreateDirectory(dir);
+        app_toast(a, "Created the shaders folder");
+    }
+    ShaderList *sl = SDL_calloc(1, sizeof *sl);
+    if (!sl) return;
+    if (have) SDL_EnumerateDirectory(dir, shader_cb, sl);
+    if (have && sl->n == 0) {
+        ui_text(ui, FONT_REGULAR, TS_BODY, L->x, L->y, t->text_dim, "No shader files in the folder yet.");
+        L->y += ui_line_h(ui, TS_BODY) + L->gap;
+    }
+    for (int i = 0; i < sl->n; i++) {
+        SDL_FRect row = next_row(a, L, dp(ui, 64));
+        ui_fill(ui, row, t->surface, dp(ui, 12));
+        if (t->high_contrast) ui_stroke(ui, row, t->border, dp(ui, 12), dp(ui, 1));
+        float bw2 = dp(ui, 190);
+        ui_text_center(ui, FONT_BOLD, TS_BODY, (SDL_FRect){ row.x + dp(ui, 16), row.y, row.w - bw2 - bw - pad * 4, row.h },
+                       t->text, sl->name[i], false);
+        float x2 = row.x + row.w - pad - bw;
+        char full[THC_PATH_MAX + 160], line[THC_PATH_MAX + 200], rel[160];
+        SDL_snprintf(rel, sizeof rel, "shaders/%s", sl->name[i]);
+        mpv_path(a, rel, full, sizeof full);
+        if (ui_button(ui, ui_idi("shader-path", i), (SDL_FRect){ x2, row.y + (row.h - bh) / 2, bw, bh }, "Copy path", ICON_NONE, false))
+            copy_text(a, full, sl->name[i]);
+        x2 -= bw2 + pad;
+        if (ui_button(ui, ui_idi("shader-line", i), (SDL_FRect){ x2, row.y + (row.h - bh) / 2, bw2, bh }, "Copy mpv.conf line", ICON_NONE, false)) {
+            SDL_snprintf(line, sizeof line, "glsl-shaders-append=\"~~/shaders/%s\"", sl->name[i]);
+            copy_text(a, line, "the mpv.conf line");
+        }
+    }
+    SDL_free(sl);
+}
+
+/* ---- on-screen controller (osc.conf) ---- */
+
+static void osc_section(App *a, Layout *L)
+{
+    Ui *ui = &a->ui;
+    group(a, L, "On-screen controller (osc.conf)",
+          "The controller's settings, such as where it sits, live in script-opts/osc.conf, not in mpv.conf. "
+          "Lines like layout=topbar in mpv.conf are skipped by MPV. Restart a video after changing it.");
+    path_row(a, L, "script-opts/osc.conf", "Settings for MPV's on-screen controller",
+             "# THC's on-screen controller settings (MPV's osc.lua reads this file).\n"
+             "# layout: bottombar (default), topbar, box or slimbox\n"
+             "layout=bottombar\n"
+             "# windowcontrols=auto\n"
+             "# seekbarstyle=bar          # bar, diamond or knob\n"
+             "# boxalpha=80\n"
+             "# hidetimeout=500\n");
+    static const char *const names[] = { "Bottom bar", "Top bar", "Box", "Slim box" };
+    static const char *const vals[] = { "bottombar", "topbar", "box", "slimbox" };
+    char path[THC_PATH_MAX + 64], cur[64] = "bottombar";
+    mpv_path(a, "script-opts/osc.conf", path, sizeof path);
+    char *text = read_text(path);
+    if (text) mpvconf_get_key(text, "layout", cur, sizeof cur);
+    int idx = 0;
+    for (int i = 0; i < 4; i++) if (!strcmp(cur, vals[i])) idx = i;
+    if (ui_segmented(ui, ui_id("osc-layout"), next_row(a, L, 0), "Controller layout", names, 4, &idx)) {
+        char out[4096];
+        char dir[THC_PATH_MAX + 64];
+        mpv_path(a, "script-opts", dir, sizeof dir);
+        SDL_CreateDirectory(dir);
+        if (mpvconf_set_key(text ? text : "", "layout", vals[idx], out, sizeof out)) {
+            write_text(a, "script-opts/osc.conf", out);
+            app_toast(a, "Layout set to %s. It applies to the next video.", names[idx]);
+        }
+    }
+    SDL_free(text);
 }
 
 static void page_mpv(App *a, Layout *L)
@@ -401,42 +660,48 @@ static void page_mpv(App *a, Layout *L)
           "mpv.conf, input.conf, scripts, shaders and profiles.");
     SDL_FRect r = next_row(a, L, dp(ui, 72));
     ui_fill(ui, r, t->surface, dp(ui, 12));
-    ui_text_fit(ui, FONT_BOLD, TS_LABEL, r.x + dp(ui, 16), r.y + dp(ui, 12), r.w - dp(ui, 200), t->text, "Configuration folder");
-    ui_text_fit(ui, FONT_REGULAR, TS_SMALL, r.x + dp(ui, 16), r.y + dp(ui, 14) + ui_line_h(ui, TS_LABEL), r.w - dp(ui, 200),
+    if (t->high_contrast) ui_stroke(ui, r, t->border, dp(ui, 12), dp(ui, 1));
+    ui_text_fit(ui, FONT_BOLD, TS_LABEL, r.x + dp(ui, 16), r.y + dp(ui, 12), r.w - dp(ui, 330), t->text, "Configuration folder");
+    ui_text_fit(ui, FONT_REGULAR, TS_SMALL, r.x + dp(ui, 16), r.y + dp(ui, 14) + ui_line_h(ui, TS_LABEL), r.w - dp(ui, 330),
                 t->text_dim, a->mpv_dir);
-    if (ui_button(ui, ui_id("mpv-open"), (SDL_FRect){ r.x + r.w - dp(ui, 164), r.y + dp(ui, 16), dp(ui, 150), dp(ui, 40) },
-                  "Open folder", ICON_FOLDER, false))
+    if (ui_button(ui, ui_id("mpv-open"), (SDL_FRect){ r.x + r.w - dp(ui, 150), r.y + dp(ui, 16), dp(ui, 136), dp(ui, 40) },
+                  "Open", ICON_FOLDER, false))
         open_folder(a, a->mpv_dir);
+    if (ui_button(ui, ui_id("mpv-copy-dir"), (SDL_FRect){ r.x + r.w - dp(ui, 296), r.y + dp(ui, 16), dp(ui, 136), dp(ui, 40) },
+                  "Copy path", ICON_NONE, false))
+        copy_text(a, a->mpv_dir, "the folder path");
     note(a, L, ICON_INFO,
          "THC's watch history is the only record of where you stopped, so THC controls resume-playback, "
-         "save-position-on-quit and watch-later-directory. Setting them in mpv.conf has no effect.");
-    float bw = dp(ui, 210);
-    if (ui_button(ui, ui_id("mpv-conf"), (SDL_FRect){ L->x, L->y, bw, dp(ui, 46) }, "Create mpv.conf", ICON_PLUS, false))
-        write_template(a, "mpv.conf",
-                       "# THC's own mpv.conf. Your standalone MPV does not read this file.\n"
-                       "# Any MPV option works here, for example:\n"
-                       "# profile=gpu-hq\n"
-                       "# hwdec=auto-safe\n"
-                       "# sub-font-size=46\n"
-                       "# sub-color=\"#FFFFFF\"\n"
-                       "# sub-back-color=\"#C0000000\"\n"
-                       "# save-position-on-quit=no   # THC already remembers your place\n");
-    if (ui_button(ui, ui_id("mpv-input"), (SDL_FRect){ L->x + bw + dp(ui, 12), L->y, bw, dp(ui, 46) }, "Create input.conf",
-                  ICON_PLUS, false))
-        write_template(a, "input.conf",
-                       "# THC's own input.conf: key bindings inside the video window.\n"
-                       "# Examples:\n"
-                       "# RIGHT seek 10\n"
-                       "# LEFT seek -10\n");
-    L->y += dp(ui, 46) + L->gap * 2;
-    note(a, L, ICON_INFO, "To start from your existing MPV setup, copy its files into this folder. Scripts go in "
-                          "a scripts folder and shaders in a shaders folder, as with MPV itself.");
+         "save-position-on-quit, watch-later-directory and start. Setting them in mpv.conf has no effect.");
+    group(a, L, "Config files", "Each file has the same name and place as in MPV's own folder.");
+    path_row(a, L, "mpv.conf", "MPV options",
+             "# THC's own mpv.conf. Your standalone MPV does not read this file.\n"
+             "# Any MPV option works here, for example:\n"
+             "# profile=gpu-hq\n"
+             "# hwdec=auto-safe\n"
+             "# sub-font-size=46\n"
+             "# sub-color=\"#FFFFFF\"\n"
+             "# sub-back-color=\"#C0000000\"\n");
+    path_row(a, L, "input.conf", "Key bindings inside the video window",
+             "# THC's own input.conf: key bindings inside the video window.\n"
+             "# Examples:\n"
+             "# RIGHT seek 10\n"
+             "# LEFT seek -10\n");
+    path_row(a, L, "scripts", "Lua, JavaScript and C scripts load from here", NULL);
+    osc_section(a, L);
+    shaders_section(a, L);
+    config_check(a, L);
+    note(a, L, ICON_INFO, "To start from your existing MPV setup, copy its files into THC's folder. The two stay "
+                          "independent afterward.");
 
     group(a, L, "libmpv", NULL);
     SDL_FRect s = next_row(a, L, dp(ui, 72));
     ui_fill(ui, s, t->surface, dp(ui, 12));
     char st[THC_PATH_MAX + 32];
-    if (a->have_mpv) SDL_snprintf(st, sizeof st, "Loaded from %s", a->mpv.path);
+    if (a->have_mpv) {
+        unsigned long v = a->mpv.client_api_version();
+        SDL_snprintf(st, sizeof st, "%s  (client API %lu.%lu)", a->mpv.path, v >> 16, v & 0xffff);
+    }
     else SDL_snprintf(st, sizeof st, "Not found. Install MPV, or point THC at libmpv below.");
     ui_icon(ui, a->have_mpv ? ICON_CHECK : ICON_CLOSE, (SDL_FRect){ s.x + dp(ui, 16), s.y + dp(ui, 24), dp(ui, 24), dp(ui, 24) },
             a->have_mpv ? t->watched : t->accent);

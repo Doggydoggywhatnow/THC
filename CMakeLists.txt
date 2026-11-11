@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(THC VERSION 0.1.1 LANGUAGES C)
+project(THC VERSION 0.1.2 LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
@@ -126,6 +126,7 @@ add_library(thc_core STATIC
   src/fstree.c
   src/history.c
   src/library.c
+  src/mpvconf.c
   src/settings.c
   src/tags.c
   src/thumbkey.c)

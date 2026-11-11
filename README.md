@@ -4,7 +4,7 @@
 
 THC is a graphical interface for your local media, written in C. It shows what's already on your device, built around the way you already organize your files, and makes browsing it feel as unique and enjoyable as booting up a streaming service, without the streaming service. No accounts, no uploads, no subscriptions: just your library, on your device.
 
-> **Status:** version 0.1.1, an early demo of the full design. Sections marked *(planned)* or *(later)* describe where THC is headed rather than what ships today.
+> **Status:** version 0.1.2, an early demo of the full design. Sections marked *(planned)* or *(later)* describe where THC is headed rather than what ships today.
 
 ---
 
@@ -193,7 +193,7 @@ THC is available on **Windows**, **Linux**, and **macOS**. On Linux it runs on *
 
 THC ships as a **separate, dedicated build for each operating system**, rather than a single universal package.
 
-Platform notes for 0.1.1:
+Platform notes for 0.1.2:
 
 - CI builds and tests THC on Windows (x86-64, MSVC), Linux (x86-64) and macOS (Apple Silicon) on every push, including lib-Peep's assembly.
 - Video playback opens MPV's own window through libmpv. This was tested on Linux; on macOS, libmpv's ability to open its own window depends on how libmpv was built, which has not been tested yet.
@@ -282,22 +282,22 @@ layout=topbar
 
 Other values are `bottombar` (the default), `box` and `slimbox`. The same file takes the controller's other options, such as `windowcontrols`, `seekbarstyle`, `boxalpha` and `hidetimeout`; see the *On Screen Controller* section of the [MPV manual](https://mpv.io/manual/master/) for the full list. Restart THC fully after changing it. The controller only appears while the mouse moves over the video.
 
-If a line in `mpv.conf` does nothing, run `THC_MPV_LOG=1 thc` in a terminal: MPV prints `Error parsing option ... (option not found)` for lines it does not recognize.
+Settings → MPV has a **Copy path** button for each of these files, a **Create** button and layout picker for `osc.conf`, a list of your shaders with buttons that copy the path or the `mpv.conf` line, and a **Config check** that lists every line MPV skips, with its line number. (`THC_MPV_LOG=1 thc` in a terminal shows MPV's own messages too.)
 
 A few options are fixed by THC so its watch history stays correct, and `mpv.conf` cannot change them: `resume-playback`, `save-position-on-quit`, `watch-later-directory` and the start position. THC keeps your place itself.
 
 
 ## Downloads
 
-Linux packages for **v0.1.1** (x86-64) are rebuilt by CI on every push to `dev` and stored in the [`downloads/`](https://github.com/Doggydoggywhatnow/THC/tree/dev/downloads) folder.
+Linux packages for **v0.1.2** (x86-64) are rebuilt by CI on every push to `dev` and stored in the [`downloads/`](https://github.com/Doggydoggywhatnow/THC/tree/dev/downloads) folder.
 
 | Distribution | Download | Install |
 | --- | --- | --- |
-| Debian, Ubuntu, Mint | [thc_0.1.1_amd64.deb](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc_0.1.1_amd64.deb) | `sudo apt install ./thc_0.1.1_amd64.deb` |
-| Any distribution (AppImage) | [THC-0.1.1-x86_64.AppImage](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/THC-0.1.1-x86_64.AppImage) | `chmod +x THC-*.AppImage && ./THC-*.AppImage` |
-| Alpine Linux | [thc-0.1.1-r0-alpine-x86_64.apk](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc-0.1.1-r0-alpine-x86_64.apk) | `sudo apk add --allow-untrusted ./thc-0.1.1-r0-alpine-x86_64.apk` |
-| Void Linux | [thc-0.1.1_1.x86_64.xbps](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc-0.1.1_1.x86_64.xbps) | `xbps-rindex -a thc-*.xbps && sudo xbps-install -R $PWD thc` |
-| Other (tarball) | [thc-0.1.1-linux-x86_64.tar.gz](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc-0.1.1-linux-x86_64.tar.gz) | unpack into `/usr` or `~/.local` |
+| Debian, Ubuntu, Mint | [thc_0.1.2_amd64.deb](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc_0.1.2_amd64.deb) | `sudo apt install ./thc_0.1.2_amd64.deb` |
+| Any distribution (AppImage) | [THC-0.1.2-x86_64.AppImage](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/THC-0.1.2-x86_64.AppImage) | `chmod +x THC-*.AppImage && ./THC-*.AppImage` |
+| Alpine Linux | [thc-0.1.2-r0-alpine-x86_64.apk](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc-0.1.2-r0-alpine-x86_64.apk) | `sudo apk add --allow-untrusted ./thc-0.1.2-r0-alpine-x86_64.apk` |
+| Void Linux | [thc-0.1.2_1.x86_64.xbps](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc-0.1.2_1.x86_64.xbps) | `xbps-rindex -a thc-*.xbps && sudo xbps-install -R $PWD thc` |
+| Other (tarball) | [thc-0.1.2-linux-x86_64.tar.gz](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc-0.1.2-linux-x86_64.tar.gz) | unpack into `/usr` or `~/.local` |
 
 Video playback needs MPV's library (libmpv) on your system: `libmpv2` on Debian/Ubuntu, `mpv-libs` on Alpine, `mpv` on Void. The .deb, .apk and .xbps pull it in; the AppImage and tarball use whatever is installed. Music works without it.
 
