@@ -423,8 +423,8 @@ Contributions are welcome once the project is public. Ideas, bug reports, and pu
 THC uses `x.y.z` version numbers:
 
 - **`x.0.0` (major):** major releases
-- **`0.x.0` (minor):** big new features
-- **`0.0.x` (patch):** small new features, bug fixes, and security updates
+- **`0.y.0` (minor):** big new features
+- **`0.0.z` (patch):** small new features, bug fixes, and security updates
 
 ## License
 
