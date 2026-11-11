@@ -81,15 +81,28 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: snap, path: out/* }
 
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
+  publish:
+    # Commits the built packages to downloads/ on dev so the README can link
+    # to them directly (no GitHub login needed). Pushes by GITHUB_TOKEN do
+    # not start new workflow runs.
+    if: github.ref == 'refs/heads/dev' && github.event_name != 'pull_request'
     needs: [deb-appimage, alpine, void, snap]
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
+      - uses: actions/checkout@v5
+        with: { ref: dev }
       - uses: actions/download-artifact@v4
         with: { path: dist, merge-multiple: true }
-      - uses: softprops/action-gh-release@v2
-        with:
-          files: dist/*
-          body: "THC ${{ github.ref_name }}. See the README's Downloads section for which file to pick."
+      - name: Commit packages
+        run: |
+          mkdir -p downloads
+          cp dist/thc_0.1.0_amd64.deb dist/THC-*.AppImage dist/*.xbps dist/thc-0.1.0-linux-x86_64.tar.gz downloads/
+          cp dist/thc-0.1.0-r0-alpine-x86_64.apk downloads/
+          cp dist/*.snap downloads/thc_0.1.0_amd64.snap
+          git config user.name "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+          git add downloads
+          git diff --cached --quiet || git commit -m "Update packages [skip ci]"
+          git pull --rebase origin dev
+          git push origin dev
