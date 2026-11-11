@@ -33,3 +33,20 @@ If you deviate from the README, update the README in the same change.
 
 ## Resources
 - lib-Peep: https://github.com/Doggydoggywhatnow/lib-Peep
+
+## Getting started
+Read `README.md` and this file, then build v0.1.0 on `dev` following the slice order above. Commit and push after each slice.
+
+## CI
+CI (`.github/workflows/ci.yml`) currently only builds the skeleton. When you add SDL3, libmpv, SQLite, or lib-Peep, update the workflow in the same slice to install them on all three OSes (Linux, Windows, macOS) so CI stays green.
+
+## lib-Peep
+Before using lib-Peep, read its README and source at https://github.com/Doggydoggywhatnow/lib-Peep to learn its API. If the interface is unclear or undocumented, note what you assumed in your commit message and in the README.
+
+## UI design
+No mockups exist. Design the UI yourself to match the README's values: visually pleasant, with a streaming-service feel. Give the music and video portals each a distinct look, and show the playback bar and checkmark under each video. Support light and dark mode, and design for accessibility from the start (keyboard navigation, scalable text, high contrast). Keep the design consistent and document major UI decisions in the README.
+
+## Licensing checks
+- Prefer an LGPL build of libmpv (`-Dgpl=false`) or launching mpv as a separate process. If you link a GPL libmpv, say so in the README's License section.
+- Before adding any OGG or MP3 decoder, confirm it is public domain or permissively licensed (for example libvorbis, minimp3, dr_mp3, or stb_vorbis) and record the choice and its license in the README.
+- Never add GPL code to THC's own source.
