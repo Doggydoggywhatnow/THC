@@ -242,12 +242,11 @@ Linux packages for **v0.1.0** (x86-64) are rebuilt by CI on every push to `dev` 
 | Any distribution (AppImage) | [THC-0.1.0-x86_64.AppImage](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/THC-0.1.0-x86_64.AppImage) | `chmod +x THC-*.AppImage && ./THC-*.AppImage` |
 | Alpine Linux | [thc-0.1.0-r0-alpine-x86_64.apk](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc-0.1.0-r0-alpine-x86_64.apk) | `sudo apk add --allow-untrusted ./thc-0.1.0-r0-alpine-x86_64.apk` |
 | Void Linux | [thc-0.1.0_1.x86_64.xbps](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc-0.1.0_1.x86_64.xbps) | `xbps-rindex -a thc-*.xbps && sudo xbps-install -R $PWD thc` |
-| Snap | [thc_0.1.0_amd64.snap](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc_0.1.0_amd64.snap) | `sudo snap install --dangerous ./thc_0.1.0_amd64.snap` |
 | Other (tarball) | [thc-0.1.0-linux-x86_64.tar.gz](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc-0.1.0-linux-x86_64.tar.gz) | unpack into `/usr` or `~/.local` |
 
-Video playback needs MPV's library (libmpv) on your system: `libmpv2` on Debian/Ubuntu, `mpv-libs` on Alpine, `mpv` on Void. The .deb, .apk, .xbps and snap pull it in; the AppImage and tarball use whatever is installed. Music works without it.
+Video playback needs MPV's library (libmpv) on your system: `libmpv2` on Debian/Ubuntu, `mpv-libs` on Alpine, `mpv` on Void. The .deb, .apk and .xbps pull it in; the AppImage and tarball use whatever is installed. Music works without it.
 
-Packages are built by `.github/workflows/packages.yml`; the recipes live in `packaging/` (AppImage script, Alpine `APKBUILD`, Void `template`) and `snap/snapcraft.yaml`. The snap includes Ubuntu's libmpv, which is GPL-licensed. Windows and macOS packages are planned.
+Packages are built by `.github/workflows/packages.yml`; the recipes live in `packaging/` (AppImage script, Alpine `APKBUILD`, Void `template`) . A Snap package is planned (recipe in `snap/snapcraft.yaml`), as are Windows and macOS packages.
 
 ## Building from source
 

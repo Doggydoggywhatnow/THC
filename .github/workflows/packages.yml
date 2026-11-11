@@ -76,17 +76,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: void, path: out/*.xbps }
 
-  snap:
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v5
-      - uses: snapcore/action-build@v1
-        id: snap
-      - run: mkdir -p out && cp ${{ steps.snap.outputs.snap }} out/
-      - uses: actions/upload-artifact@v4
-        with: { name: snap, path: out/* }
-
   publish:
     # Commits the built packages to downloads/ on dev so the README can link
     # to them directly (no GitHub login needed). Pushes by GITHUB_TOKEN do
@@ -115,21 +104,3 @@ jobs:
           git pull --rebase origin dev
           git push origin dev
 
-  publish-snap:
-    if: always() && needs.snap.result == 'success' && github.ref == 'refs/heads/dev'
-    needs: [snap]
-    runs-on: ubuntu-latest
-    permissions: { contents: write }
-    steps:
-      - uses: actions/checkout@v5
-        with: { ref: dev }
-      - uses: actions/download-artifact@v4
-        with: { path: dist, merge-multiple: true }
-      - run: |
-          mkdir -p downloads
-          cp dist/*.snap downloads/thc_0.1.0_amd64.snap
-          git config user.name "github-actions"
-          git config user.email "actions@users.noreply.github.com"
-          git add downloads
-          git diff --cached --quiet || git commit -m "Update snap [skip ci]"
-          for i in 1 2 3; do git pull --rebase origin dev && git push origin dev && break; sleep 5; done
