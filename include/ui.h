@@ -214,6 +214,10 @@ bool ui_segmented(Ui *ui, Uint32 id, SDL_FRect r, const char *label, const char 
 /* Single-line text field. Returns true when Enter is pressed. */
 bool ui_textfield(Ui *ui, Uint32 id, SDL_FRect r, char *buf, size_t cap, const char *placeholder);
 
+/* For custom controls: while `id` has focus, Left/Right adjust it instead of
+ * moving focus. Returns -1, 0 or +1 for this frame. */
+int ui_capture_lr(Ui *ui, Uint32 id);
+
 /* Progress bar with an optional watched checkmark at its end. */
 void ui_progress(Ui *ui, SDL_FRect r, float frac, Color fill);
 void ui_watch_status(Ui *ui, SDL_FRect r, float frac, bool watched, Color fill);

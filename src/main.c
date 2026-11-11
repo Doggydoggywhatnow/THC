@@ -249,7 +249,7 @@ static void video_pill(App *a)
     const Theme *t = &ui->th;
     float h = dp(ui, 56);
     float w = SDL_min(ui->w - dp(ui, 48), dp(ui, 560));
-    SDL_FRect r = { (ui->w - w) / 2, ui->h - h - dp(ui, 24), w, h };
+    SDL_FRect r = { (ui->w - w) / 2, ui->h - music_bar_height(a) - h - dp(ui, 24), w, h };
     ui_shadow(ui, r, h / 2, dp(ui, 28), t->shadow);
     ui_fill(ui, r, t->surface_hi, h / 2);
     if (t->high_contrast) ui_stroke(ui, r, t->border, h / 2, dp(ui, 2));

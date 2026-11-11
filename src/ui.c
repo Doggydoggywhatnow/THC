@@ -1715,3 +1715,12 @@ void ui_watch_status(Ui *ui, SDL_FRect r, float frac, bool watched, Color fill)
     }
 }
 
+
+int ui_capture_lr(Ui *ui, Uint32 id)
+{
+    if (ui->focus != id) return 0;
+    g_capture_lr_next = id;
+    int v = g_lr_pending;
+    g_lr_pending = 0;
+    return v;
+}

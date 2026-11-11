@@ -121,10 +121,14 @@ Media you play opens in MPV, and THC picks up your progress from there.
 
 | Type | Handled by |
 | --- | --- |
-| Video files | [MPV](https://mpv.io) |
-| FLAC and WAV | [lib-Peep](https://github.com/Doggydoggywhatnow/lib-Peep) |
-| OGG and MP3 | Public domain codecs |
-| Audiobooks | M4B and MP3 |
+| Video files | [MPV](https://mpv.io) (through libmpv) |
+| FLAC and WAV (8 to 32-bit, float, A-law, mu-law, ADPCM) | [lib-Peep](https://github.com/Doggydoggywhatnow/lib-Peep) |
+| MP3 | [dr_mp3](https://github.com/mackron/dr_libs) (public domain or MIT-0), plugged into lib-Peep's codec interface |
+| OGG (Vorbis) | [stb_vorbis](https://github.com/nothings/stb) (public domain or MIT), plugged into lib-Peep's codec interface |
+| M4A, AAC, Opus and other audio | MPV, without a window |
+| Audiobooks | M4B and MP3 (through MPV when available, so speed changes keep the pitch and M4B chapters work) |
+
+lib-Peep is used from its `dev` branch (version 0.5.0), which has both x86-64 (NASM) and ARM64 assembly. It builds for Windows and Linux on x86-64, Linux on ARM64, and Apple Silicon Macs. On Apple Silicon THC turns on the sources' `APPLE` mode, and leaves out the compressed-WAV codec (A-law, mu-law, ADPCM), which does not assemble for macOS yet. Where lib-Peep cannot be built (for example Intel Macs, which would need underscore-prefixed x86 symbols), FLAC, WAV, MP3 and OGG play through MPV instead.
 
 ## Platforms
 
@@ -311,4 +315,15 @@ THC uses `x.y.z` version numbers:
 
 THC's own source code is released under [the Unlicense](https://unlicense.org), which dedicates it to the public domain.
 
-THC uses MPV, which is licensed under the GPL (or LGPL, depending on how it's built). MPV keeps its own license, and builds of THC that include or link MPV are distributed in line with MPV's license terms.
+Bundled third-party code and assets keep their own licenses:
+
+| Component | Use | License |
+| --- | --- | --- |
+| [lib-Peep](https://github.com/Doggydoggywhatnow/lib-Peep) | WAV and FLAC decoding | Unlicense (public domain) |
+| [dr_mp3](https://github.com/mackron/dr_libs) | MP3 decoding | Public domain (Unlicense) or MIT-0 |
+| [stb_vorbis, stb_truetype, stb_image](https://github.com/nothings/stb) | OGG decoding, text, cover images | Public domain or MIT |
+| [Atkinson Hyperlegible](https://brailleinstitute.org/freefont) | The default interface font | SIL Open Font License 1.1 (`assets/fonts/OFL.txt`) |
+| [SDL3](https://libsdl.org) | Window, input, audio output | zlib |
+| [SQLite](https://sqlite.org) | Watch history | Public domain |
+
+THC does not link MPV. It loads libmpv at run time (`libmpv.so.2`, `libmpv-2.dll` or `libmpv.2.dylib`), so no MPV code is part of a THC build. libmpv is licensed under the GPL or, when built with `-Dgpl=false`, the LGPL; an LGPL build is recommended. MPV keeps its own license.

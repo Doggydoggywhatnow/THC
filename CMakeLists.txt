@@ -55,6 +55,61 @@ if(NOT SQLite3_FOUND)
   add_library(SQLite::SQLite3 ALIAS thc_sqlite3)
 endif()
 
+# ---------------------------------------------------------------------------
+# lib-Peep (public domain): WAV and FLAC decoding in assembly, x86-64 (NASM)
+# and ARM64 (GNU as syntax). Its codec interface also carries THC's MP3
+# (dr_mp3) and Ogg Vorbis (stb_vorbis) decoders. Where it cannot be built
+# (other CPUs, Intel Macs), THC plays those formats through libmpv instead.
+# ---------------------------------------------------------------------------
+option(THC_USE_PEEP "Use lib-Peep for music decoding" ON)
+set(PEEP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/lib-Peep)
+set(THC_HAVE_PEEP OFF)
+if(THC_BUILD_APP AND THC_USE_PEEP)
+  include(CheckLanguage)
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|x64)$" AND NOT APPLE)
+    check_language(ASM_NASM)
+    if(CMAKE_ASM_NASM_COMPILER)
+      enable_language(ASM_NASM)
+      set(PEEP_SRC ${PEEP_DIR}/peep.asm ${PEEP_DIR}/flac.asm ${PEEP_DIR}/wav.asm ${PEEP_DIR}/wavc.asm)
+      add_library(peep STATIC ${PEEP_SRC})
+      target_include_directories(peep PRIVATE ${PEEP_DIR}/)
+      if(WIN32)
+        set_source_files_properties(${PEEP_SRC} PROPERTIES COMPILE_DEFINITIONS WIN64)
+      endif()
+      set(THC_HAVE_PEEP ON)
+      set(THC_PEEP_WAVC ON)
+    else()
+      message(WARNING "NASM not found: lib-Peep disabled, FLAC/WAV/MP3/OGG will play through libmpv")
+    endif()
+  elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(aarch64|arm64|ARM64)$" AND NOT MSVC)
+    enable_language(ASM)
+    if(APPLE)
+      # Mach-O: the sources' APPLE mode (underscore symbols). The compressed
+      # WAV codec (wavc) does not assemble for Mach-O yet, so it is left out.
+      set(PEEP_SRC)
+      foreach(f peep flac wav)
+        set(w ${CMAKE_CURRENT_BINARY_DIR}/peep_apple_${f}.s)
+        file(WRITE ${w} ".set APPLE, 1\n.include \"${PEEP_DIR}/arm64/${f}.s\"\n")
+        list(APPEND PEEP_SRC ${w})
+      endforeach()
+      set(THC_PEEP_WAVC OFF)
+    else()
+      set(PEEP_SRC ${PEEP_DIR}/arm64/peep.s ${PEEP_DIR}/arm64/flac.s ${PEEP_DIR}/arm64/wav.s
+                   ${PEEP_DIR}/arm64/wavc.s)
+      set(THC_PEEP_WAVC ON)
+    endif()
+    add_library(peep STATIC ${PEEP_SRC})
+    target_include_directories(peep PRIVATE ${PEEP_DIR}/arm64)
+    if(CMAKE_C_COMPILER_ID STREQUAL "GNU")
+      target_compile_options(peep PRIVATE "-Wa,-I${PEEP_DIR}/arm64")
+    endif()
+    set(THC_HAVE_PEEP ON)
+  else()
+    message(STATUS "lib-Peep has no build for ${CMAKE_SYSTEM_PROCESSOR} here: using libmpv for music")
+  endif()
+endif()
+message(STATUS "lib-Peep: ${THC_HAVE_PEEP}")
+
 function(thc_warnings target)
   if(MSVC)
     target_compile_options(${target} PRIVATE /W4 /wd4100 /wd4996)
@@ -94,6 +149,7 @@ if(THC_BUILD_APP)
   add_executable(thc WIN32 MACOSX_BUNDLE
     src/main.c
     src/art.c
+    src/audio.c
     src/chrome.c
     src/hotkeys.c
     src/mpv_dyn.c
@@ -111,6 +167,16 @@ if(THC_BUILD_APP)
     ${CMAKE_CURRENT_BINARY_DIR}/font_bold.c)
   target_include_directories(thc PRIVATE include src third_party/stb)
   set_source_files_properties(src/third_party.c PROPERTIES COMPILE_OPTIONS "$<IF:$<C_COMPILER_ID:MSVC>,/W0,-w>")
+  if(THC_HAVE_PEEP)
+    target_sources(thc PRIVATE src/peep_codecs.c)
+    set_source_files_properties(src/peep_codecs.c PROPERTIES COMPILE_OPTIONS "$<IF:$<C_COMPILER_ID:MSVC>,/W0,-w>")
+    target_include_directories(thc PRIVATE third_party/lib-Peep third_party/dr_libs)
+    target_link_libraries(thc PRIVATE peep)
+    target_compile_definitions(thc PRIVATE THC_HAVE_PEEP=1)
+    if(THC_PEEP_WAVC)
+      target_compile_definitions(thc PRIVATE THC_PEEP_WAVC=1)
+    endif()
+  endif()
   target_compile_definitions(thc PRIVATE THC_VERSION="${PROJECT_VERSION}")
   target_link_libraries(thc PRIVATE thc_core SDL3::SDL3)
   thc_warnings(thc)

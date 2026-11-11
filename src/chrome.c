@@ -95,7 +95,7 @@ void chrome_toast(App *a)
     const Theme *t = &ui->th;
     float tw = ui_text_w(ui, FONT_BOLD, TS_BODY, a->toast) + dp(ui, 40);
     float th = dp(ui, 48);
-    SDL_FRect r = { (ui->w - tw) / 2, ui->h - th - dp(ui, 28), tw, th };
+    SDL_FRect r = { (ui->w - tw) / 2, ui->h - music_bar_height(a) - th - dp(ui, 28), tw, th };
     ui_shadow(ui, r, th / 2, dp(ui, 24), t->shadow);
     ui_fill(ui, r, t->text, th / 2);
     ui_text_center(ui, FONT_BOLD, TS_BODY, r, t->bg2, a->toast, true);
