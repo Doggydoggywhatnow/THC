@@ -33,6 +33,13 @@ typedef struct HistoryRow {
 #define HISTORY_DEFAULT_THRESHOLD 0.90
 
 History *history_open(const char *db_path, char *err, size_t err_len);
+/* The same with an explicit schema version and migrations (migrations[i] upgrades version i+1 to
+ * i+2). Used by tests; history_open uses the version this build knows. A database made by a
+ * newer version than `target_version` is opened untouched. */
+History *history_open_ex(const char *db_path, int target_version, const char *const *migrations,
+                         char *err, size_t err_len);
+/* The schema version recorded in the file. */
+int history_schema_version(History *h);
 void history_close(History *h);
 
 /* Look up a file. Returns false if there is no history for it. */

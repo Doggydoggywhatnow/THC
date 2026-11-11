@@ -9,6 +9,10 @@ add_executable(test_settings test_settings.c)
 target_link_libraries(test_settings PRIVATE thc_core)
 add_test(NAME settings COMMAND test_settings WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
+add_executable(test_history_compat test_history_compat.c)
+target_link_libraries(test_history_compat PRIVATE thc_core)
+add_test(NAME history_compat COMMAND test_history_compat WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
 add_executable(test_mpvconf test_mpvconf.c)
 target_link_libraries(test_mpvconf PRIVATE thc_core)
 add_test(NAME mpvconf COMMAND test_mpvconf)

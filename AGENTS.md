@@ -50,3 +50,6 @@ No mockups exist. Design the UI yourself to match the README's values: visually 
 - Prefer an LGPL build of libmpv (`-Dgpl=false`) or launching mpv as a separate process. If you link a GPL libmpv, say so in the README's License section.
 - Before adding any OGG or MP3 decoder, confirm it is public domain or permissively licensed (for example libvorbis, minimp3, dr_mp3, or stb_vorbis) and record the choice and its license in the README.
 - Never add GPL code to THC's own source.
+
+## History compatibility
+Every version of THC must read and write the history database of every other version. Change the schema only by adding a numbered migration in `src/history.c` (only add columns that are nullable or have a DEFAULT, plus tables and indexes; never rename, drop or retype a column), bump `HISTORY_SCHEMA_VERSION`, and extend `tests/test_history_compat.c`. Never reset `user_version` or delete a user's database.

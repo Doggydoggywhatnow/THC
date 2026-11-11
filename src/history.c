@@ -2,6 +2,7 @@
 
 #include <math.h>
 #include <sqlite3.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -9,14 +10,25 @@
 
 struct History {
     sqlite3 *db;
+    int newer_schema;   /* nonzero: the file was made by a newer THC */
 };
 
 /* Two durations are "the same file" if they differ by less than this. */
 #define DURATION_MATCH_SECONDS 1.5
 
-static const char *k_schema =
-    "PRAGMA journal_mode=WAL;"
-    "PRAGMA synchronous=NORMAL;"
+/* ---- schema and versions ------------------------------------------------------
+ * The database must stay usable by every version of THC, old and new:
+ *  - PRAGMA user_version records the schema version. It is only ever raised, never reset.
+ *  - A newer THC migrates an older database forward (after a backup next to the file), and
+ *    keeps every column an older version reads.
+ *  - An older THC that meets a newer database leaves it alone: it does not touch the version,
+ *    and only reads and writes the columns it knows.
+ * Rules for future versions: only ADD columns (nullable or with a DEFAULT), tables and indexes.
+ * Never rename, drop or retype a column of an earlier version.
+ * Version 1 is the 0.1.0 schema below. */
+#define HISTORY_SCHEMA_VERSION 1
+
+static const char *k_base_schema =
     "CREATE TABLE IF NOT EXISTS history ("
     "  id INTEGER PRIMARY KEY,"
     "  path TEXT NOT NULL,"
@@ -27,29 +39,130 @@ static const char *k_schema =
     "  watch_count INTEGER NOT NULL DEFAULT 0,"
     "  updated INTEGER NOT NULL DEFAULT 0,"
     "  UNIQUE(path, size));"
-    "CREATE INDEX IF NOT EXISTS history_size ON history(size);"
-    "PRAGMA user_version=1;";
+    "CREATE INDEX IF NOT EXISTS history_size ON history(size);";
 
-History *history_open(const char *db_path, char *err, size_t err_len)
+/* migrations[i] upgrades version i+1 to i+2. None yet: version 1 is current. */
+static const char *const k_no_migrations[] = { NULL };
+
+static int pragma_int(sqlite3 *db, const char *sql)
+{
+    sqlite3_stmt *st;
+    int v = 0;
+    if (sqlite3_prepare_v2(db, sql, -1, &st, NULL) == SQLITE_OK) {
+        if (sqlite3_step(st) == SQLITE_ROW) v = sqlite3_column_int(st, 0);
+        sqlite3_finalize(st);
+    }
+    return v;
+}
+
+static bool table_exists(sqlite3 *db, const char *name)
+{
+    sqlite3_stmt *st;
+    bool ok = false;
+    if (sqlite3_prepare_v2(db, "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1", -1, &st, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(st, 1, name, -1, SQLITE_STATIC);
+        ok = sqlite3_step(st) == SQLITE_ROW;
+        sqlite3_finalize(st);
+    }
+    return ok;
+}
+
+/* Copy the database file to <path>.v<version>.bak (once), after folding the WAL into it. */
+static void backup_before_migration(sqlite3 *db, const char *path, int version)
+{
+    char dst[1100];
+    snprintf(dst, sizeof dst, "%s.v%d.bak", path, version);
+    FILE *test = fopen(dst, "rb");
+    if (test) { fclose(test); return; }
+    sqlite3_exec(db, "PRAGMA wal_checkpoint(TRUNCATE);", NULL, NULL, NULL);
+    FILE *in = fopen(path, "rb"), *out = in ? fopen(dst, "wb") : NULL;
+    if (in && out) {
+        char buf[65536];
+        size_t n;
+        while ((n = fread(buf, 1, sizeof buf, in)) > 0) fwrite(buf, 1, n, out);
+    }
+    if (in) fclose(in);
+    if (out) fclose(out);
+}
+
+static History *fail(History *h, char *err, size_t err_len, const char *msg)
+{
+    if (err) snprintf(err, err_len, "%s", msg ? msg : "history database error");
+    if (h->db) sqlite3_close(h->db);
+    free(h);
+    return NULL;
+}
+
+History *history_open_ex(const char *db_path, int target_version, const char *const *migrations,
+                         char *err, size_t err_len)
 {
     History *h = calloc(1, sizeof *h);
     if (!h) return NULL;
-    if (sqlite3_open(db_path, &h->db) != SQLITE_OK) {
-        if (err) snprintf(err, err_len, "%s", sqlite3_errmsg(h->db));
-        sqlite3_close(h->db);
-        free(h);
-        return NULL;
-    }
+    if (sqlite3_open(db_path, &h->db) != SQLITE_OK) return fail(h, err, err_len, sqlite3_errmsg(h->db));
     sqlite3_busy_timeout(h->db, 2000);
+    sqlite3_exec(h->db, "PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;", NULL, NULL, NULL);
+
+    int ver = pragma_int(h->db, "PRAGMA user_version;");
+    bool had_table = table_exists(h->db, "history");
     char *msg = NULL;
-    if (sqlite3_exec(h->db, k_schema, NULL, NULL, &msg) != SQLITE_OK) {
-        if (err) snprintf(err, err_len, "%s", msg ? msg : "schema error");
-        sqlite3_free(msg);
-        sqlite3_close(h->db);
-        free(h);
-        return NULL;
+    bool unversioned = ver == 0 && had_table;
+    if (unversioned) ver = 1;   /* a database from before versions were recorded */
+
+    if (ver > target_version) {
+        /* made by a newer THC: leave the version and everything we do not know alone */
+        h->newer_schema = ver;
+    } else {
+        if (unversioned) sqlite3_exec(h->db, "PRAGMA user_version=1;", NULL, NULL, NULL);
+        if (ver == 0) {
+            /* brand new */
+            if (sqlite3_exec(h->db, k_base_schema, NULL, NULL, &msg) != SQLITE_OK) {
+                char m[256];
+                snprintf(m, sizeof m, "%s", msg ? msg : "schema error");
+                sqlite3_free(msg);
+                return fail(h, err, err_len, m);
+            }
+            char sql[64];
+            snprintf(sql, sizeof sql, "PRAGMA user_version=%d;", target_version);
+            sqlite3_exec(h->db, sql, NULL, NULL, NULL);
+            ver = target_version;
+        }
+        if (ver < target_version) {
+            backup_before_migration(h->db, db_path, ver);
+            if (sqlite3_exec(h->db, "BEGIN IMMEDIATE;", NULL, NULL, &msg) != SQLITE_OK) {
+                sqlite3_free(msg);
+                return fail(h, err, err_len, "could not start the history upgrade");
+            }
+            sqlite3_exec(h->db, k_base_schema, NULL, NULL, NULL);
+            for (int v = ver; v < target_version; v++) {
+                if (!migrations || !migrations[v - 1]) break;
+                if (sqlite3_exec(h->db, migrations[v - 1], NULL, NULL, &msg) != SQLITE_OK) {
+                    char m[300];
+                    snprintf(m, sizeof m, "history upgrade to version %d failed: %s (your data is unchanged)", v + 1,
+                             msg ? msg : "error");
+                    sqlite3_free(msg);
+                    sqlite3_exec(h->db, "ROLLBACK;", NULL, NULL, NULL);
+                    return fail(h, err, err_len, m);
+                }
+            }
+            char sql[64];
+            snprintf(sql, sizeof sql, "PRAGMA user_version=%d;", target_version);
+            sqlite3_exec(h->db, sql, NULL, NULL, NULL);
+            sqlite3_exec(h->db, "COMMIT;", NULL, NULL, NULL);
+        } else {
+            sqlite3_exec(h->db, k_base_schema, NULL, NULL, NULL);   /* harmless if it already exists */
+        }
     }
     return h;
+}
+
+History *history_open(const char *db_path, char *err, size_t err_len)
+{
+    return history_open_ex(db_path, HISTORY_SCHEMA_VERSION, k_no_migrations, err, err_len);
+}
+
+int history_schema_version(History *h)
+{
+    return h ? pragma_int(h->db, "PRAGMA user_version;") : 0;
 }
 
 void history_close(History *h)

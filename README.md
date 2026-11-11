@@ -208,7 +208,7 @@ THC is a graphical layer on top of proven components:
 - **Interface** is built with SDL3 and runs the same way on Windows, Linux (Wayland and X11), and macOS. SDL3 also plays THC's own audio.
 - **Watch history** is stored in a local SQLite database in your OS's standard data directory. Entries are keyed by relative path within the library plus file size and duration, so renaming or moving a file doesn't lose its history.
 - **Full MPV configuration:** every MPV option is available to THC, while still tracking your history.
-- **Playback state** (last position and watched status) is stored locally on your device and never transmitted.
+- **Playback state** (last position and watched status) is stored locally on your device and never transmitted. Every version of THC reads the history of every other: newer versions upgrade the database in place (keeping a `.bak` copy first), and older versions leave newer data untouched.
 
 THC has its own separate area for configuring the MPV it uses. That means you can keep MPV installed standalone with your own settings, and THC's setup won't interfere with it (and vice versa).
 
