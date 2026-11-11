@@ -33,6 +33,28 @@ if(THC_BUILD_APP)
   endif()
 endif()
 
+# ---------------------------------------------------------------------------
+# SQLite (public domain): system copy, or the amalgamation from sqlite.org.
+# ---------------------------------------------------------------------------
+find_package(SQLite3 QUIET)
+if(NOT SQLite3_FOUND)
+  if(NOT THC_FETCH_DEPS)
+    message(FATAL_ERROR "SQLite3 not found and THC_FETCH_DEPS is OFF")
+  endif()
+  message(STATUS "SQLite3 not found: building the amalgamation")
+  FetchContent_Declare(sqlite_amalgamation
+    URL https://www.sqlite.org/2025/sqlite-amalgamation-3500400.zip)
+  FetchContent_MakeAvailable(sqlite_amalgamation)
+  add_library(thc_sqlite3 STATIC ${sqlite_amalgamation_SOURCE_DIR}/sqlite3.c)
+  target_include_directories(thc_sqlite3 PUBLIC ${sqlite_amalgamation_SOURCE_DIR})
+  target_compile_definitions(thc_sqlite3 PRIVATE SQLITE_OMIT_LOAD_EXTENSION SQLITE_THREADSAFE=1)
+  if(UNIX)
+    find_package(Threads REQUIRED)
+    target_link_libraries(thc_sqlite3 PUBLIC Threads::Threads)
+  endif()
+  add_library(SQLite::SQLite3 ALIAS thc_sqlite3)
+endif()
+
 function(thc_warnings target)
   if(MSVC)
     target_compile_options(${target} PRIVATE /W4 /wd4100 /wd4996)
@@ -41,6 +63,18 @@ function(thc_warnings target)
     target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
   endif()
 endfunction()
+
+# ---------------------------------------------------------------------------
+# thc_core: everything that does not need SDL (tested on its own).
+# ---------------------------------------------------------------------------
+add_library(thc_core STATIC
+  src/history.c)
+target_include_directories(thc_core PUBLIC include)
+target_link_libraries(thc_core PUBLIC SQLite::SQLite3)
+if(UNIX)
+  target_link_libraries(thc_core PUBLIC m)
+endif()
+thc_warnings(thc_core)
 
 # ---------------------------------------------------------------------------
 # The THC application.
@@ -52,7 +86,7 @@ if(THC_BUILD_APP)
     src/video.c)
   target_include_directories(thc PRIVATE include)
   target_compile_definitions(thc PRIVATE THC_VERSION="${PROJECT_VERSION}")
-  target_link_libraries(thc PRIVATE SDL3::SDL3)
+  target_link_libraries(thc PRIVATE thc_core SDL3::SDL3)
   thc_warnings(thc)
 endif()
 
