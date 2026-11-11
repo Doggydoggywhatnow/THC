@@ -42,11 +42,21 @@ void chrome_topbar(App *a)
     ui_fill_grad(ui, bar, with_alpha(t->bg, 245), with_alpha(t->bg, t->high_contrast ? 255 : 215), 0);
     ui_fill(ui, (SDL_FRect){ 0, h - 1, (float)ui->w, 1 }, with_alpha(t->border, t->high_contrast ? 255 : 120), 0);
 
-    /* wordmark */
+    /* wordmark: the logo is the way in to About and settings */
     float x = dp(ui, 28);
     float lh = ui_line_h(ui, TS_H2);
+    float lw0 = ui_text_w(ui, FONT_BOLD, TS_H2, "THC");
+    SDL_FRect logo = { x - dp(ui, 10), (h - dp(ui, 48)) / 2, lw0 + dp(ui, 34), dp(ui, 48) };
+    Uint32 logo_id = ui_id("logo-btn");
+    UiItemState ls = ui_item(ui, logo_id, logo);
+    bool on_about = a->screen == SCREEN_SETTINGS;
+    float lhv = ui_anim_id(ui, logo_id, (ls.hover || on_about) ? 1.0f : 0.0f, 16);
+    if (lhv > 0.01f) ui_fill(ui, logo, with_alpha(t->surface_hi, (Uint8)(255 * lhv)), logo.h / 2);
     float lw = ui_text(ui, FONT_BOLD, TS_H2, x, (h - lh) / 2, t->text, "THC");
     ui_circle(ui, x + lw + dp(ui, 5), (h + lh) / 2 - lh * 0.33f, dp(ui, 4), t->accent);
+    if (ls.focused) ui_focus_ring(ui, logo, logo.h / 2);
+    if (ls.hover || ls.focused) ui_tooltip(ui, logo, "About THC and settings");
+    if (ls.activated) app_go(a, on_about ? (a->last_portal ? a->last_portal : SCREEN_VIDEO) : SCREEN_SETTINGS);
     x += lw + dp(ui, 36);
 
     /* portal tabs */
@@ -69,15 +79,12 @@ void chrome_topbar(App *a)
         x += tw + dp(ui, 8);
     }
 
-    /* right side: scan status and settings */
-    float bs = dp(ui, 44);
-    SDL_FRect gear = { ui->w - dp(ui, 24) - bs, (h - bs) / 2, bs, bs };
-    if (a->screen == SCREEN_SETTINGS) ui_fill(ui, gear, t->surface_hi, bs / 2);
-    if (ui_icon_button(ui, ui_id("settings-btn"), gear, ICON_GEAR, "Settings")) app_go(a, SCREEN_SETTINGS);
+    /* right side: scan status */
+    float rx = ui->w - dp(ui, 28);
     if (a->scanning) {
         const char *msg = "Scanning library";
         float tw = ui_text_w(ui, FONT_REGULAR, TS_SMALL, msg);
-        float cx = gear.x - dp(ui, 16) - tw;
+        float cx = rx - tw;
         ui_text(ui, FONT_REGULAR, TS_SMALL, cx, (h - ui_line_h(ui, TS_SMALL)) / 2, t->text_dim, msg);
         float ph = (float)fmod(ui->time * 2.0, 1.0);
         ui_circle(ui, cx - dp(ui, 12), h / 2, dp(ui, 3 + 2 * sinf(ph * 6.283f)), t->accent);

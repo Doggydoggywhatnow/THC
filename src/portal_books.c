@@ -134,16 +134,49 @@ static void book_stat(App *a, const Book *b, BookStat *st)
     st->frac = b->nfiles ? sum / b->nfiles : 0;
 }
 
+/* What to show for a book: tags in the files (title, author, narrator, cover) win over the
+ * names of folders and files, once the tag cache has read them. */
+typedef struct BookInfo {
+    char title[256], author[256], narrator[256];
+    char art[THC_PATH_MAX];
+    int chapters;
+} BookInfo;
+
+static void book_info(const App *a, const Book *b, BookInfo *bi)
+{
+    SDL_zerop(bi);
+    SDL_strlcpy(bi->title, b->title, sizeof bi->title);
+    SDL_strlcpy(bi->author, b->author, sizeof bi->author);
+    if (b->art) app_full_path(a, ROOT_BOOKS, b->art, bi->art, sizeof bi->art);
+    /* the first few files are enough, and keep this cheap for books with hundreds of parts */
+    for (int i = 0; i < b->nfiles && i < 8; i++) {
+        const TagInfo *t = tag_get(a, ROOT_BOOKS, b->files[i]);
+        if (!t) continue;
+        if (i == 0) {
+            /* a single-file book is named by its title tag; a folder of parts by its album tag */
+            const char *name = b->nfiles == 1 && !b->node->dir ? (t->title[0] ? t->title : t->album)
+                                                               : (t->album[0] ? t->album : "");
+            if (name[0]) SDL_strlcpy(bi->title, name, sizeof bi->title);
+            const char *who = t->artist[0] ? t->artist : t->album_artist;
+            if (who[0]) SDL_strlcpy(bi->author, who, sizeof bi->author);
+        }
+        if (t->narrator[0] && !bi->narrator[0]) SDL_strlcpy(bi->narrator, t->narrator, sizeof bi->narrator);
+        bi->chapters += t->chapters;
+        char key[THC_PATH_MAX + 8];
+        if (i == 0 && tag_art_key(a, ROOT_BOOKS, b->files[i], key, sizeof key)) SDL_strlcpy(bi->art, key, sizeof bi->art);
+    }
+}
+
 /* A cover drawn as a book: art (or a gradient) with a spine on the left. */
 static void book_cover(App *a, SDL_FRect r, const Book *b, float lift)
 {
     Ui *ui = &a->ui;
     const Theme *t = &ui->th;
-    char art[THC_PATH_MAX] = "";
-    if (b->art) app_full_path(a, ROOT_BOOKS, b->art, art, sizeof art);
+    BookInfo bi;
+    book_info(a, b, &bi);
     float rad = dp(ui, 6);
     ui_shadow(ui, r, rad, dp(ui, 16 + lift * 16), t->shadow);
-    draw_cover(a, r, b->title, art[0] ? art : NULL, rad, ICON_NONE);
+    draw_cover(a, r, bi.title, bi.art[0] ? bi.art : NULL, rad, ICON_NONE);
     if (!t->high_contrast) {
         float sw = r.w * 0.07f;
         ui_fill_grad_h(ui, (SDL_FRect){ r.x, r.y, sw, r.h }, rgba(0x000000, 90), rgba(0x000000, 0), rad);
@@ -166,10 +199,12 @@ static bool book_card(App *a, SDL_FRect r, const Book *b)
     BookStat bs;
     book_stat(a, b, &bs);
     float y = c.y + c.h + dp(ui, 12);
-    ui_text_fit(ui, FONT_BOLD, TS_BODY, r.x, y, r.w, t->text, b->title);
+    BookInfo bi;
+    book_info(a, b, &bi);
+    ui_text_fit(ui, FONT_BOLD, TS_BODY, r.x, y, r.w, t->text, bi.title);
     y += ui_line_h(ui, TS_BODY);
     char meta[300];
-    if (b->author[0]) SDL_strlcpy(meta, b->author, sizeof meta);
+    if (bi.author[0]) SDL_strlcpy(meta, bi.author, sizeof meta);
     else SDL_snprintf(meta, sizeof meta, "%d file%s", b->nfiles, b->nfiles == 1 ? "" : "s");
     ui_text_fit(ui, FONT_REGULAR, TS_SMALL, r.x, y, r.w, t->text_dim, meta);
     y += ui_line_h(ui, TS_SMALL) + dp(ui, 6);
@@ -217,14 +252,26 @@ static void book_page(App *a, const Book *b, float x, float *py, float w)
     float ty = *py;
     ui_text(ui, FONT_BOLD, TS_SMALL, tx, ty, t->accent, "AUDIOBOOK");
     ty += ui_line_h(ui, TS_SMALL);
-    ty += ui_text_wrap(ui, FONT_BOLD, TS_HERO, tx, ty, tw, t->text, b->title, 2);
-    if (b->author[0]) {
-        ui_text_fit(ui, FONT_REGULAR, TS_TITLE, tx, ty, tw, t->text_dim, b->author);
+    BookInfo bi;
+    book_info(a, b, &bi);
+    ty += ui_text_wrap(ui, FONT_BOLD, TS_HERO, tx, ty, tw, t->text, bi.title, 2);
+    if (bi.author[0]) {
+        ui_text_fit(ui, FONT_REGULAR, TS_TITLE, tx, ty, tw, t->text_dim, bi.author);
         ty += ui_line_h(ui, TS_TITLE);
     }
-    char meta[96];
-    SDL_snprintf(meta, sizeof meta, "%d part%s \xC2\xB7 %d finished \xC2\xB7 %d%%", b->nfiles, b->nfiles == 1 ? "" : "s",
-                 st.done, (int)(st.frac * 100 + 0.5f));
+    if (bi.narrator[0]) {
+        char nar[300];
+        SDL_snprintf(nar, sizeof nar, "Narrated by %s", bi.narrator);
+        ui_text_fit(ui, FONT_REGULAR, TS_BODY, tx, ty, tw, t->text_dim, nar);
+        ty += ui_line_h(ui, TS_BODY);
+    }
+    char meta[128];
+    int used = SDL_snprintf(meta, sizeof meta, "%d part%s", b->nfiles, b->nfiles == 1 ? "" : "s");
+    if (bi.chapters > 0 && used > 0 && used < (int)sizeof meta)
+        used += SDL_snprintf(meta + used, sizeof meta - (size_t)used, " \xC2\xB7 %d chapters", bi.chapters);
+    if (used > 0 && used < (int)sizeof meta)
+        SDL_snprintf(meta + used, sizeof meta - (size_t)used, " \xC2\xB7 %d finished \xC2\xB7 %d%%", st.done,
+                     (int)(st.frac * 100 + 0.5f));
     ty += dp(ui, 8);
     ui_text(ui, FONT_REGULAR, TS_BODY, tx, ty, t->text_dim, meta);
     ty += ui_line_h(ui, TS_BODY) + dp(ui, 10);

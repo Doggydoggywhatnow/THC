@@ -4,11 +4,9 @@
 
 #include <string.h>
 
-enum { CAT_LIBRARY = 0, CAT_PLAYBACK, CAT_APPEARANCE, CAT_ACCESS, CAT_HOTKEYS, CAT_MPV, CAT_PRIVACY, CAT_ABOUT, CAT_COUNT };
+enum { CAT_LIBRARY = 0, CAT_PLAYBACK, CAT_APPEARANCE, CAT_ACCESS, CAT_HOTKEYS, CAT_MPV, CAT_PRIVACY, CAT_COUNT };
 static const char *const k_cat_names[CAT_COUNT] = { "Library", "Playback", "Appearance", "Accessibility",
-                                                    "Hotkeys", "MPV", "Privacy", "About" };
-static const UiIcon k_cat_icons[CAT_COUNT] = { ICON_FOLDER, ICON_PLAY, ICON_SUN, ICON_EYE,
-                                               ICON_KEYBOARD, ICON_FILM, ICON_SHIELD, ICON_INFO };
+                                                    "Hotkeys", "MPV", "Privacy" };
 
 static int g_cat;
 static int g_capture = -1;        /* action waiting for a key press */
@@ -16,6 +14,7 @@ static double g_clear_armed;      /* "clear history" needs a second press */
 static char g_font_field[THC_PATH_MAX];
 static char g_mpv_field[THC_PATH_MAX];
 static bool g_fields_init;
+static bool g_jump_settings;      /* scroll down to the settings after this frame */
 
 bool settings_capture_key(App *a, const SDL_KeyboardEvent *k)
 {
@@ -176,6 +175,20 @@ static void page_library(App *a, Layout *L)
             app_rebuild_library(a);
         }
     }
+    group(a, L, "Thumbnails",
+          "Video thumbnails come from a picture next to the video, or a frame THC grabs from the video itself. "
+          "Frames are cached in THC's own folder, never next to your media.");
+    if (ui_toggle(ui, ui_id("set-thumbs"), next_row(a, L, dp(ui, 72)), "Make video thumbnails",
+                  a->have_mpv ? "Uses a little CPU and disk while you browse" : "Needs libmpv, which was not found",
+                  &a->set.video_thumbs))
+        app_save_settings(a);
+    if (ui_button(ui, ui_id("set-thumbs-clear"), (SDL_FRect){ L->x, L->y, dp(ui, 280), dp(ui, 46) },
+                  "Clear thumbnail cache", ICON_CLOSE, false)) {
+        thumbs_clear(a);
+        app_toast(a, "Thumbnail cache cleared");
+    }
+    L->y += dp(ui, 46) + L->gap;
+    group(a, L, "Library", NULL);
     if (ui_button(ui, ui_id("set-rescan"), (SDL_FRect){ L->x, L->y, dp(ui, 200), dp(ui, 46) }, "Rescan now", ICON_SORT, false)) {
         app_rescan(a);
         app_toast(a, "Rescanning your library");
@@ -394,6 +407,9 @@ static void page_mpv(App *a, Layout *L)
     if (ui_button(ui, ui_id("mpv-open"), (SDL_FRect){ r.x + r.w - dp(ui, 164), r.y + dp(ui, 16), dp(ui, 150), dp(ui, 40) },
                   "Open folder", ICON_FOLDER, false))
         open_folder(a, a->mpv_dir);
+    note(a, L, ICON_INFO,
+         "THC's watch history is the only record of where you stopped, so THC controls resume-playback, "
+         "save-position-on-quit and watch-later-directory. Setting them in mpv.conf has no effect.");
     float bw = dp(ui, 210);
     if (ui_button(ui, ui_id("mpv-conf"), (SDL_FRect){ L->x, L->y, bw, dp(ui, 46) }, "Create mpv.conf", ICON_PLUS, false))
         write_template(a, "mpv.conf",
@@ -461,6 +477,7 @@ static void page_privacy(App *a, Layout *L)
                   armed ? "Press again to clear" : "Clear watch history", ICON_CLOSE, armed)) {
         if (armed) {
             history_clear(a->hist);
+            video_clear_watch_later(a->mpv_dir);
             app_history_changed();
             g_clear_armed = 0;
             app_toast(a, "Watch history cleared");
@@ -483,18 +500,36 @@ static void page_privacy(App *a, Layout *L)
                 "Would be strictly opt-in and off by default. Not in this version.");
 }
 
-static void page_about(App *a, Layout *L)
+#define THC_REPO_URL "https://github.com/Doggydoggywhatnow/THC"
+
+/* The About block at the top of the page: logo, version, what THC is, links
+ * and credits. Settings start right below it. */
+static void about_block(App *a, Layout *L)
 {
     Ui *ui = &a->ui;
     const Theme *t = &ui->th;
-    ui_text(ui, FONT_BOLD, TS_HERO, L->x, L->y, t->text, "THC");
-    L->y += ui_line_h(ui, TS_HERO);
-    ui_text(ui, FONT_REGULAR, TS_LABEL, L->x, L->y, t->text_dim, "Version " THC_VERSION);
-    L->y += ui_line_h(ui, TS_LABEL) + dp(ui, 16);
-    L->y += ui_text_wrap(ui, FONT_REGULAR, TS_BODY, L->x, L->y, L->w, t->text,
+    float lw = ui_text(ui, FONT_BOLD, TS_HERO, L->x, L->y, t->text, "THC");
+    float lh = ui_line_h(ui, TS_HERO);
+    ui_circle(ui, L->x + lw + dp(ui, 8), L->y + lh * 0.78f, dp(ui, 6), t->accent);
+    /* the version is a small addition next to the logo */
+    char ver[32];
+    SDL_snprintf(ver, sizeof ver, "v%s", THC_VERSION);
+    float vw = ui_text_w(ui, FONT_BOLD, TS_SMALL, ver) + dp(ui, 20);
+    SDL_FRect vr = { L->x + lw + dp(ui, 28), L->y + lh * 0.55f, vw, ui_line_h(ui, TS_SMALL) + dp(ui, 8) };
+    ui_fill(ui, vr, t->surface, vr.h / 2);
+    ui_text_center(ui, FONT_BOLD, TS_SMALL, vr, t->text_dim, ver, true);
+    L->y += lh + dp(ui, 8);
+    L->y += ui_text_wrap(ui, FONT_REGULAR, TS_LABEL, L->x, L->y, L->w, t->text,
                          "A lightweight multimedia player for the music and videos you already have. Visually "
-                         "pleasant, useful, accessible and private.", 4);
+                         "pleasant, useful, accessible and private. Everything stays on your device.", 4);
     L->y += dp(ui, 16);
+
+    SDL_FRect br = { L->x, L->y, dp(ui, 220), dp(ui, 44) };
+    if (ui_button(ui, ui_id("about-repo"), br, "Project page", ICON_INFO, false)) SDL_OpenURL(THC_REPO_URL);
+    SDL_FRect bs = { L->x + br.w + dp(ui, 12), L->y, dp(ui, 260), dp(ui, 44) };
+    if (ui_button(ui, ui_id("about-jump"), bs, "Jump to settings", ICON_GEAR, true)) g_jump_settings = true;
+    L->y += br.h + dp(ui, 12);
+
     group(a, L, "Built with", NULL);
     static const char *const parts[][2] = {
         { "MPV (libmpv)", "Video and some audio formats. Loaded at run time; GPL or LGPL." },
@@ -522,64 +557,42 @@ void screen_settings(App *a, SDL_FRect area)
 {
     Ui *ui = &a->ui;
     const Theme *t = &ui->th;
-    bool side = area.w > dp(ui, 860);
-    float pad = SDL_max(dp(ui, 32), (area.w - dp(ui, 1200)) / 2);
-    float navw = side ? dp(ui, 230) : 0;
-    float x = area.x + pad;
+    float pad = SDL_max(dp(ui, 32), (area.w - dp(ui, 900)) / 2);
+    Uint32 page_id = ui_id("settings-page");
 
-    /* category list (left column, or a row of pills on narrow windows) */
-    float top = area.y + dp(ui, 28);
-    if (side) {
-        ui_text(ui, FONT_BOLD, TS_H1, x, top, t->text, "Settings");
-        float y = top + ui_line_h(ui, TS_H1) + dp(ui, 20);
-        for (int i = 0; i < CAT_COUNT; i++) {
-            SDL_FRect r = { x, y, navw - dp(ui, 20), dp(ui, 46) };
-            Uint32 id = ui_idi("cat", i);
-            UiItemState st = ui_item(ui, id, r);
-            bool sel = g_cat == i;
-            if (sel) ui_fill(ui, r, t->text, dp(ui, 12));
-            else if (st.hover) ui_fill(ui, r, t->surface_hi, dp(ui, 12));
-            Color fg = sel ? t->bg2 : t->text;
-            float is = dp(ui, 20);
-            ui_icon(ui, k_cat_icons[i], (SDL_FRect){ r.x + dp(ui, 14), r.y + (r.h - is) / 2, is, is }, fg);
-            ui_text_center(ui, FONT_BOLD, TS_BODY, (SDL_FRect){ r.x + dp(ui, 46), r.y, r.w - dp(ui, 50), r.h }, fg,
-                           k_cat_names[i], false);
-            if (st.focused) ui_focus_ring(ui, r, dp(ui, 12));
-            if (st.activated && g_cat != i) {
-                g_cat = i;
-                g_capture = -1;
-                ui_scroll_reset(ui, ui_id("settings-page"));
-            }
-            y += r.h + dp(ui, 6);
-        }
-    }
-    SDL_FRect view = { area.x + pad + navw, area.y, area.w - 2 * pad - navw + pad, area.h };
-    if (!side) view = area;
-    float off = ui_scroll_begin(ui, ui_id("settings-page"), view, false);
+    float off = ui_scroll_begin(ui, page_id, area, false);
     Layout L;
-    L.x = side ? view.x + dp(ui, 8) : x;
-    L.w = SDL_min((side ? view.w - pad - dp(ui, 8) : area.w - 2 * pad), dp(ui, 820));
-    L.y = top - off;
+    L.x = area.x + pad;
+    L.w = SDL_min(area.w - 2 * pad, dp(ui, 820));
+    L.y = area.y + dp(ui, 28) - off;
     L.row = dp(ui, 60);
     L.gap = dp(ui, 10);
-    if (!side) {
-        ui_text(ui, FONT_BOLD, TS_H1, x, L.y, t->text, "Settings");
-        L.y += ui_line_h(ui, TS_H1) + dp(ui, 16);
-        float px = x;
-        for (int i = 0; i < CAT_COUNT; i++) {
-            float pw = ui_text_w(ui, FONT_BOLD, TS_BODY, k_cat_names[i]) + dp(ui, 32);
-            if (px + pw > x + L.w) { px = x; L.y += dp(ui, 46); }
-            if (ui_pill(ui, ui_idi("catp", i), (SDL_FRect){ px, L.y, pw, dp(ui, 38) }, k_cat_names[i], g_cat == i)) {
-                g_cat = i;
-                g_capture = -1;
-            }
-            px += pw + dp(ui, 8);
+
+    about_block(a, &L);
+
+    /* settings begin here, below the About information */
+    L.y += dp(ui, 28);
+    float settings_top = L.y + off - area.y; /* in content coordinates */
+    ui_fill(ui, (SDL_FRect){ L.x, L.y, L.w, 1 }, with_alpha(t->border, 160), 0);
+    L.y += dp(ui, 28);
+    ui_text(ui, FONT_BOLD, TS_H1, L.x, L.y, t->text, "Settings");
+    L.y += ui_line_h(ui, TS_H1) + dp(ui, 16);
+    float px = L.x;
+    for (int i = 0; i < CAT_COUNT; i++) {
+        float pw = ui_text_w(ui, FONT_BOLD, TS_BODY, k_cat_names[i]) + dp(ui, 32);
+        if (px + pw > L.x + L.w) { px = L.x; L.y += dp(ui, 46); }
+        if (ui_pill(ui, ui_idi("catp", i), (SDL_FRect){ px, L.y, pw, dp(ui, 38) }, k_cat_names[i], g_cat == i)) {
+            g_cat = i;
+            g_capture = -1;
         }
-        L.y += dp(ui, 60);
-    } else {
-        ui_text(ui, FONT_BOLD, TS_H2, L.x, L.y + dp(ui, 6), t->text, k_cat_names[g_cat]);
-        L.y += ui_line_h(ui, TS_H1) + dp(ui, 20);
+        px += pw + dp(ui, 8);
     }
+    L.y += dp(ui, 60);
+    if (g_jump_settings) {
+        g_jump_settings = false;
+        ui_scroll_to(ui, page_id, settings_top - dp(ui, 12));
+    }
+
     switch (g_cat) {
     case CAT_LIBRARY: page_library(a, &L); break;
     case CAT_PLAYBACK: page_playback(a, &L); break;
@@ -587,8 +600,7 @@ void screen_settings(App *a, SDL_FRect area)
     case CAT_ACCESS: page_access(a, &L); break;
     case CAT_HOTKEYS: page_hotkeys(a, &L); break;
     case CAT_MPV: page_mpv(a, &L); break;
-    case CAT_PRIVACY: page_privacy(a, &L); break;
-    default: page_about(a, &L); break;
+    default: page_privacy(a, &L); break;
     }
     L.y += dp(ui, 60);
     ui_scroll_end(ui, L.y + off - area.y);

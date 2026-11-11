@@ -143,6 +143,12 @@ static bool poster_card(App *a, SDL_FRect r, const Entry *en)
     char art[THC_PATH_MAX];
     int root = en->show ? en->show->root : en->movie->root;
     art_path(a, root, en->show ? en->show->art : en->movie->art, art, sizeof art);
+    if (!art[0]) {
+        /* no poster: use a frame of the movie, or of the show's first episode */
+        const FsNode *first = en->movie ? en->movie->file
+                              : (en->show->nseasons && en->show->seasons[0].neps ? en->show->seasons[0].eps[0].file : NULL);
+        if (first) thumb_get(a, root, first, art, sizeof art);
+    }
     draw_cover(a, p, entry_title(en), art[0] ? art : NULL, dp(ui, 14), en->show ? ICON_TV : ICON_FILM);
     if (st.focused) ui_focus_ring(ui, p, dp(ui, 14));
 
@@ -209,6 +215,8 @@ static bool wide_card(App *a, SDL_FRect r, Uint32 id, const char *cover_title, c
     SDL_FRect c = { card.x - lift * dp(ui, 4), card.y - lift * dp(ui, 4), card.w + lift * dp(ui, 8),
                     card.h + lift * dp(ui, 8) };
     ui_shadow(ui, c, dp(ui, 14), dp(ui, 20), t->shadow);
+    char tpath[THC_PATH_MAX];
+    if (file && thumb_get(a, root, file, tpath, sizeof tpath)) art = tpath;   /* this episode's own frame */
     draw_art(a, c, cover_title, art, dp(ui, 14));
     if (!t->high_contrast) ui_fill_grad(ui, c, rgba(0, 0), rgba(0, 120), dp(ui, 14));
     float is = dp(ui, 46) * (1 + lift * 0.08f);
@@ -642,12 +650,20 @@ static bool episode_row(App *a, SDL_FRect r, const Show *sh, const Season *se, c
     Color c1, c2;
     art_colors(sh->title, &c1, &c2);
     Color fg = t->high_contrast ? t->text : rgb(0xFFFFFF);
-    if (t->high_contrast) ui_stroke(ui, tile, t->border, dp(ui, 10), dp(ui, 2));
-    else ui_fill_grad_h(ui, tile, color_mix(c1, c2, 0.2f), c2, dp(ui, 10));
+    char tpath[THC_PATH_MAX];
+    bool has_thumb = thumb_get(a, sh->root, ep->file, tpath, sizeof tpath) && art_get(a, tpath);
+    if (has_thumb) {
+        draw_art(a, tile, sh->title, tpath, dp(ui, 10));
+        if (!t->high_contrast) ui_fill(ui, tile, rgba(0, hv > 0.5f ? 110 : 0), dp(ui, 10));
+    } else if (t->high_contrast) {
+        ui_stroke(ui, tile, t->border, dp(ui, 10), dp(ui, 2));
+    } else {
+        ui_fill_grad_h(ui, tile, color_mix(c1, c2, 0.2f), c2, dp(ui, 10));
+    }
     if (hv > 0.5f) {
         float is = th * 0.46f;
         ui_icon(ui, ICON_PLAY, (SDL_FRect){ tile.x + (tw - is) / 2, tile.y + (th - is) / 2, is, is }, fg);
-    } else {
+    } else if (!has_thumb) {
         char num[16];
         SDL_snprintf(num, sizeof num, "%d", ep->number);
         ui_text_center(ui, FONT_BOLD, TS_H2, tile, fg, num, true);
@@ -721,6 +737,8 @@ static void show_page(App *a, const Show *sh, float x, float *py, float w)
     float ph = pw * 1.5f;
     char art[THC_PATH_MAX];
     art_path(a, sh->root, sh->art, art, sizeof art);
+    if (!art[0] && sh->nseasons && sh->seasons[0].neps)
+        thumb_get(a, sh->root, sh->seasons[0].eps[0].file, art, sizeof art);   /* no poster: a frame */
     SDL_FRect pr = { x, *py, pw, ph };
     ui_shadow(ui, pr, dp(ui, 16), dp(ui, 36), t->shadow);
     draw_cover(a, pr, sh->title, art[0] ? art : NULL, dp(ui, 16), ICON_TV);

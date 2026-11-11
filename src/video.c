@@ -36,6 +36,16 @@ bool video_play(VideoSession *s, const MpvApi *api, const char *path, const Vide
     api->set_option_string(s->h, "config-dir", opt->config_dir);
     api->set_option_string(s->h, "config", "yes");
 
+    /* THC's history database is the only source of truth for where you stopped.
+     * mpv's own resume (watch_later files) would compete with it and can bring
+     * back older positions, so it is switched off here, and what is left of it
+     * is kept inside THC's own folder. These win over anything in mpv.conf. */
+    char wl[1100];
+    SDL_snprintf(wl, sizeof wl, "%s/watch_later", opt->config_dir);
+    api->set_option_string(s->h, "resume-playback", "no");
+    api->set_option_string(s->h, "save-position-on-quit", "no");
+    api->set_option_string(s->h, "watch-later-directory", wl);
+
     /* Behave like the mpv player: its own window, default key bindings,
      * on-screen controller. mpv.conf (loaded at initialize) can override. */
     /* THC_MPV_LOG=1 prints mpv's own log to the terminal, for debugging. */
@@ -58,13 +68,26 @@ bool video_play(VideoSession *s, const MpvApi *api, const char *path, const Vide
     } else {
         api->set_option_string(s->h, "force-window", "immediate");
     }
-    if (opt->start > 1.0) {
+    /* always explicit: a position of zero means "from the beginning" */
+    {
         char buf[64];
-        SDL_snprintf(buf, sizeof buf, "%.3f", opt->start);
+        SDL_snprintf(buf, sizeof buf, "%.3f", opt->start > 1.0 ? opt->start : 0.0);
         api->set_option_string(s->h, "start", buf);
+        if (SDL_getenv("THC_MPV_LOG")) SDL_Log("THC: starting %s at %s s", path, buf);
     }
 
     int err = api->initialize(s->h);
+    if (err >= 0) {
+        /* mpv.conf is loaded at initialize and overrides the options set above, so
+         * set them again as properties, which win: THC's rules for resuming hold
+         * whatever mpv.conf says. */
+        api->set_property_string(s->h, "resume-playback", "no");
+        api->set_property_string(s->h, "save-position-on-quit", "no");
+        api->set_property_string(s->h, "watch-later-directory", wl);
+        char sb[64];
+        SDL_snprintf(sb, sizeof sb, "%.3f", opt->start > 1.0 ? opt->start : 0.0);
+        api->set_property_string(s->h, "start", sb);
+    }
     if (err < 0) {
         SDL_snprintf(s->error, sizeof s->error, "mpv_initialize: %s", api->error_string(err));
         api->terminate_destroy(s->h);
@@ -198,4 +221,22 @@ void video_stop(VideoSession *s)
     s->api->terminate_destroy(s->h);
     s->h = NULL;
     s->active = false;
+}
+
+/* Remove mpv's own saved positions inside THC's config folder (never anywhere else). */
+static SDL_EnumerationResult SDLCALL rm_entry(void *ud, const char *dirname, const char *fname)
+{
+    (void)ud;
+    char full[1200];
+    SDL_snprintf(full, sizeof full, "%s%s", dirname, fname);
+    SDL_RemovePath(full);
+    return SDL_ENUM_CONTINUE;
+}
+
+void video_clear_watch_later(const char *config_dir)
+{
+    if (!config_dir || !*config_dir) return;
+    char wl[1100];
+    SDL_snprintf(wl, sizeof wl, "%s/watch_later", config_dir);
+    SDL_EnumerateDirectory(wl, rm_entry, NULL);
 }

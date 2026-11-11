@@ -180,12 +180,53 @@ static void fill_item(App *a, QItem *it, int root, const FsNode *f, const char *
     strip(f->name, it->title, sizeof it->title);
     SDL_strlcpy(it->sub, sub ? sub : "", sizeof it->sub);
     SDL_strlcpy(it->art, art ? art : "", sizeof it->art);
+    /* embedded tags win over folder and file names */
+    const TagInfo *t = tag_get(a, root, f);
+    if (t) {
+        if (t->title[0]) SDL_strlcpy(it->title, t->title, sizeof it->title);
+        const char *who = t->artist[0] ? t->artist : t->album_artist;
+        if (who[0] && t->album[0]) SDL_snprintf(it->sub, sizeof it->sub, "%s \xC2\xB7 %s", who, t->album);
+        else if (who[0]) SDL_strlcpy(it->sub, who, sizeof it->sub);
+        else if (t->album[0]) SDL_strlcpy(it->sub, t->album, sizeof it->sub);
+        char key[THC_PATH_MAX + 8];
+        if (tag_art_key(a, root, f, key, sizeof key)) SDL_strlcpy(it->art, key, sizeof it->art);
+    }
 }
 
 static bool playable(const FsNode *n, bool books)
 {
     if (n->dir) return false;
     return n->kind == MK_AUDIO || n->kind == MK_AUDIO_MPV || (books && n->kind == MK_BOOK);
+}
+
+int music_tracks(const App *a, int root, const FsNode *dir, const FsNode **out, int max)
+{
+    bool books = root == ROOT_BOOKS;
+    int n = 0;
+    for (int i = 0; i < dir->nkids && n < max; i++)
+        if (playable(dir->kids[i], books)) out[n++] = dir->kids[i];
+    if (n < 2) return n;
+    /* order by disc and track number when every file has a track number;
+     * otherwise keep the file-name order */
+    const TagInfo *t[MAXQ];
+    for (int i = 0; i < n && i < MAXQ; i++) {
+        t[i] = tag_get(a, root, out[i]);
+        if (!t[i] || t[i]->track <= 0) return n;
+    }
+    if (n > MAXQ) return n;
+    for (int i = 1; i < n; i++) {   /* stable insertion sort */
+        const FsNode *f = out[i];
+        const TagInfo *ti = t[i];
+        int j = i - 1;
+        while (j >= 0 && tags_order(t[j], ti) > 0) {
+            out[j + 1] = out[j];
+            t[j + 1] = t[j];
+            j--;
+        }
+        out[j + 1] = f;
+        t[j + 1] = ti;
+    }
+    return n;
 }
 
 void music_play_folder(App *a, int root, const FsNode *dir, int track_index)
@@ -203,8 +244,9 @@ void music_play_folder(App *a, int root, const FsNode *dir, int track_index)
     if (dir->dir) {
         if (dir->parent && dir->parent->parent) SDL_snprintf(sub, sizeof sub, "%s \xC2\xB7 %s", dir->parent->name, dir->name);
         else SDL_strlcpy(sub, dir->name, sizeof sub);
-        for (int i = 0; i < dir->nkids && P.n < MAXQ; i++)
-            if (playable(dir->kids[i], books)) fill_item(a, &P.q[P.n++], root, dir->kids[i], sub, art);
+        const FsNode *list[MAXQ];
+        int nl = music_tracks(a, root, dir, list, MAXQ);
+        for (int i = 0; i < nl && P.n < MAXQ; i++) fill_item(a, &P.q[P.n++], root, list[i], sub, art);
     } else {
         if (dir->parent && dir->parent->parent) SDL_strlcpy(sub, dir->parent->name, sizeof sub);
         fill_item(a, &P.q[P.n++], root, dir, sub, art);

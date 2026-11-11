@@ -4,6 +4,7 @@
 
 #include "stb_image.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 #define ART_SLOTS 192
@@ -25,11 +26,20 @@ static Uint64 g_tick;
 static SDL_Texture *load(App *a, const char *path)
 {
     size_t len = 0;
-    void *data = SDL_LoadFile(path, &len);
-    if (!data) return NULL;
     int w, h, comp;
-    unsigned char *px = stbi_load_from_memory(data, (int)len, &w, &h, &comp, 4);
-    SDL_free(data);
+    unsigned char *px;
+    if (!strncmp(path, "tag:", 4)) {
+        /* a cover embedded in an audio file's tags (read-only) */
+        unsigned char *data = tags_read_art(path + 4, &len, NULL, 0);
+        if (!data) return NULL;
+        px = stbi_load_from_memory(data, (int)len, &w, &h, &comp, 4);
+        free(data);
+    } else {
+        void *data = SDL_LoadFile(path, &len);
+        if (!data) return NULL;
+        px = stbi_load_from_memory(data, (int)len, &w, &h, &comp, 4);
+        SDL_free(data);
+    }
     if (!px) return NULL;
     SDL_Surface *s = SDL_CreateSurfaceFrom(w, h, SDL_PIXELFORMAT_RGBA32, px, w * 4);
     SDL_Texture *t = NULL;

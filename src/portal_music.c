@@ -38,6 +38,18 @@ static const FsNode *deep_art(const FsNode *n, int depth)
     return NULL;
 }
 
+/* Embedded cover of the first track with one, looking inside a folder (and, for
+ * an artist, inside its albums). Embedded art comes before folder images. */
+static bool embedded_art(const App *a, const FsNode *n, int depth, char *buf, size_t cap)
+{
+    for (int i = 0; i < n->nkids; i++)
+        if (is_audio(n->kids[i]) && tag_art_key(a, ROOT_MUSIC, n->kids[i], buf, cap)) return true;
+    if (depth < 2)
+        for (int i = 0; i < n->nkids; i++)
+            if (n->kids[i]->dir && embedded_art(a, n->kids[i], depth + 1, buf, cap)) return true;
+    return false;
+}
+
 static bool cover_card(App *a, SDL_FRect r, const FsNode *n, bool round, const char *meta)
 {
     Ui *ui = &a->ui;
@@ -53,8 +65,10 @@ static bool cover_card(App *a, SDL_FRect r, const FsNode *n, bool round, const c
     if (round) rad = c.w / 2;
     ui_shadow(ui, c, rad, dp(ui, 16 + lift * 14), t->shadow);
     char art[THC_PATH_MAX] = "";
-    const FsNode *an = round ? deep_art(n, 0) : fs_find_art(n);
-    if (an) app_full_path(a, ROOT_MUSIC, an, art, sizeof art);
+    if (!embedded_art(a, n, round ? 0 : 1, art, sizeof art)) {
+        const FsNode *an = round ? deep_art(n, 0) : fs_find_art(n);
+        if (an) app_full_path(a, ROOT_MUSIC, an, art, sizeof art);
+    }
     draw_cover(a, c, n->name, art[0] ? art : NULL, rad, round ? ICON_NONE : ICON_NOTE);
     if (!t->high_contrast && lift > 0.01f && !round) {
         /* a play button appears on hover, like a record sleeve */
@@ -116,10 +130,12 @@ static float track_list(App *a, const FsNode *dir, float x, float y, float w)
     const Theme *t = &ui->th;
     float y0 = y;
     float rh = dp(ui, 52);
-    int idx = 0;
-    for (int i = 0; i < dir->nkids; i++) {
-        const FsNode *k = dir->kids[i];
-        if (!is_audio(k)) continue;
+    const FsNode *list[512];
+    int nl = music_tracks(a, ROOT_MUSIC, dir, list, 512);
+    const char *folder_artist = dir->parent && dir->parent->parent ? dir->parent->name : "";
+    for (int idx = 0; idx < nl; idx++) {
+        const FsNode *k = list[idx];
+        const TagInfo *tg = tag_get(a, ROOT_MUSIC, k);
         SDL_FRect r = { x, y, w, rh };
         Uint32 id = ui_idp("track", k);
         UiItemState st = ui_item(ui, id, r);
@@ -137,25 +153,36 @@ static float track_list(App *a, const FsNode *dir, float x, float y, float w)
                         cur ? t->accent : t->text);
             } else {
                 char num[12];
-                SDL_snprintf(num, sizeof num, "%d", idx + 1);
+                SDL_snprintf(num, sizeof num, "%d", tg && tg->track > 0 ? tg->track : idx + 1);
                 ui_text_center(ui, FONT_REGULAR, TS_BODY, nb, t->text_dim, num, true);
             }
             char title[256];
-            title_of(k->name, title, sizeof title);
+            if (tg && tg->title[0]) SDL_strlcpy(title, tg->title, sizeof title);
+            else title_of(k->name, title, sizeof title);
+            /* show the artist when it differs from the folder's (compilations) */
+            const char *who = tg ? (tg->artist[0] ? tg->artist : tg->album_artist) : "";
+            bool show_who = who[0] && SDL_strcasecmp(who, folder_artist) != 0;
             float tx = nx + dp(ui, 44);
             const char *ext = path_ext(k->name);
             char fmt[16];
             SDL_strlcpy(fmt, ext, sizeof fmt);
             for (char *p = fmt; *p; p++) *p = (char)SDL_toupper(*p);
             float fw = ui_text_w(ui, FONT_BOLD, TS_SMALL, fmt) + dp(ui, 16);
-            ui_text_center(ui, FONT_BOLD, TS_BODY, (SDL_FRect){ tx, r.y, r.x + r.w - tx - fw - dp(ui, 28), rh },
-                           cur ? t->accent : t->text, title, false);
+            float avail = r.x + r.w - tx - fw - dp(ui, 28);
+            if (show_who) {
+                float lh = ui_line_h(ui, TS_BODY);
+                float y0 = r.y + (rh - lh - ui_line_h(ui, TS_SMALL)) / 2;
+                ui_text_fit(ui, FONT_BOLD, TS_BODY, tx, y0, avail, cur ? t->accent : t->text, title);
+                ui_text_fit(ui, FONT_REGULAR, TS_SMALL, tx, y0 + lh, avail, t->text_dim, who);
+            } else {
+                ui_text_center(ui, FONT_BOLD, TS_BODY, (SDL_FRect){ tx, r.y, avail, rh },
+                               cur ? t->accent : t->text, title, false);
+            }
             SDL_FRect chip = { r.x + r.w - fw - dp(ui, 16), r.y + (rh - dp(ui, 22)) / 2, fw, dp(ui, 22) };
             ui_stroke(ui, chip, with_alpha(t->text_dim, 120), chip.h / 2, dp(ui, 1));
             ui_text_center(ui, FONT_BOLD, TS_SMALL, chip, t->text_dim, fmt, true);
         }
         if (st.activated) music_play_folder(a, ROOT_MUSIC, dir, idx);
-        idx++;
         y += rh + dp(ui, 2);
     }
     return y - y0;
@@ -221,8 +248,10 @@ void portal_music(App *a, SDL_FRect area)
         y += bs + dp(ui, 12);
         float av = dp(ui, 120);
         char art[THC_PATH_MAX] = "";
-        const FsNode *an = deep_art(dir, 0);
-        if (an) app_full_path(a, ROOT_MUSIC, an, art, sizeof art);
+        if (!embedded_art(a, dir, 0, art, sizeof art)) {
+            const FsNode *an = deep_art(dir, 0);
+            if (an) app_full_path(a, ROOT_MUSIC, an, art, sizeof art);
+        }
         ui_shadow(ui, (SDL_FRect){ x, y, av, av }, av / 2, dp(ui, 24), t->shadow);
         draw_cover(a, (SDL_FRect){ x, y, av, av }, dir->name, art[0] ? art : NULL, av / 2, ICON_NONE);
         float tx = x + av + dp(ui, 28);
@@ -241,8 +270,10 @@ void portal_music(App *a, SDL_FRect area)
         bool side = w > dp(ui, 760);
         float cs = side ? SDL_min(dp(ui, 300), w * 0.34f) : SDL_min(dp(ui, 260), w);
         char art[THC_PATH_MAX] = "";
-        const FsNode *an = fs_find_art(dir);
-        if (an) app_full_path(a, ROOT_MUSIC, an, art, sizeof art);
+        if (!embedded_art(a, dir, 2, art, sizeof art)) {
+            const FsNode *an = fs_find_art(dir);
+            if (an) app_full_path(a, ROOT_MUSIC, an, art, sizeof art);
+        }
         SDL_FRect cr = { x, y, cs, cs };
         ui_shadow(ui, cr, dp(ui, 16), dp(ui, 40), t->shadow);
         draw_cover(a, cr, dir->name, art[0] ? art : NULL, dp(ui, 16), ICON_NOTE);
@@ -252,9 +283,25 @@ void portal_music(App *a, SDL_FRect area)
         ui_text(ui, FONT_BOLD, TS_SMALL, tx, ty, t->accent, "ALBUM");
         ty += ui_line_h(ui, TS_SMALL);
         ty += ui_text_wrap(ui, FONT_BOLD, TS_H1, tx, ty, tw, t->text, dir->name, 2);
-        if (dir->parent && dir->parent->parent) {
-            ui_text_fit(ui, FONT_REGULAR, TS_LABEL, tx, ty, tw, t->text_dim, dir->parent->name);
+        /* album details from the first track's tags: artist, year, genre */
+        const TagInfo *ft = NULL;
+        for (int i = 0; i < dir->nkids && !ft; i++)
+            if (is_audio(dir->kids[i])) ft = tag_get(a, ROOT_MUSIC, dir->kids[i]);
+        const char *who = ft ? (ft->album_artist[0] ? ft->album_artist : ft->artist) : "";
+        if (!who[0] && dir->parent && dir->parent->parent) who = dir->parent->name;
+        if (who[0]) {
+            ui_text_fit(ui, FONT_REGULAR, TS_LABEL, tx, ty, tw, t->text_dim, who);
             ty += ui_line_h(ui, TS_LABEL);
+        }
+        if (ft && (ft->year || ft->genre[0])) {
+            char info[160] = "";
+            if (ft->year) SDL_snprintf(info, sizeof info, "%d", ft->year);
+            if (ft->genre[0]) {
+                size_t l = SDL_strlen(info);
+                SDL_snprintf(info + l, sizeof info - l, "%s%s", l ? "  \xC2\xB7  " : "", ft->genre);
+            }
+            ui_text_fit(ui, FONT_REGULAR, TS_BODY, tx, ty, tw, t->text_dim, info);
+            ty += ui_line_h(ui, TS_BODY);
         }
         ty += dp(ui, 16);
         if (tracks_here) {

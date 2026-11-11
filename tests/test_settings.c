@@ -11,6 +11,7 @@ int main(void)
     CHECK_NEAR(s.watched_threshold, 0.90);
     CHECK_STR(s.hotkey[ACT_PLAY_PAUSE], "Space");
     CHECK(s.remember_history);
+    CHECK(s.video_thumbs);   /* thumbnails are on by default */
 
     s.setup_done = true;
     snprintf(s.music_dir, sizeof s.music_dir, "/home/me/Music");
@@ -20,6 +21,7 @@ int main(void)
     s.theme = THEME_LIGHT;
     s.text_scale = 1.5f;
     s.high_contrast = true;
+    s.video_thumbs = false;
     snprintf(s.hotkey[ACT_SEEK_BACK], sizeof s.hotkey[0], "Left");
     settings_set_override(&s, "video:Avatar The Last Airbender", SECTION_CARTOONS);
     settings_set_override(&s, "video:Some Show", SECTION_ANIME);
@@ -36,6 +38,7 @@ int main(void)
     CHECK(t.theme == THEME_LIGHT);
     CHECK_NEAR(t.text_scale, 1.5);
     CHECK(t.high_contrast);
+    CHECK(!t.video_thumbs);
     CHECK(!t.reduced_motion);
     CHECK_STR(t.hotkey[ACT_SEEK_BACK], "Left");
     CHECK_STR(t.hotkey[ACT_SEEK_FORWARD], "L");

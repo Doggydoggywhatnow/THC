@@ -9,6 +9,7 @@
 #include "library.h"
 #include "mpv_dyn.h"
 #include "settings.h"
+#include "tags.h"
 #include "ui.h"
 #include "video.h"
 
@@ -116,6 +117,9 @@ void music_bar(App *a);
 bool music_hotkey(App *a, Action act);
 void music_play_folder(App *a, int root, const FsNode *dir, int track_index);
 bool music_is_current(App *a, const FsNode *track);
+/* Playable files of a folder in play order: by disc and track number from their tags when
+ * every file has one, else by file name. Returns the count. */
+int music_tracks(const App *a, int root, const FsNode *dir, const FsNode **out, int max);
 
 /* screen_settings.c */
 bool settings_capture_key(App *a, const SDL_KeyboardEvent *k);
@@ -124,6 +128,23 @@ bool settings_capture_key(App *a, const SDL_KeyboardEvent *k);
 void scan_start(App *a);
 bool scan_poll(App *a);  /* true when a new library was installed */
 void library_free(Library *lib);
+
+/* tagcache.c: audio tags (title, artist, album, track, embedded art) read in the
+ * background after each scan. tag_get returns NULL until a file has been read,
+ * or if it has no tags. */
+void tagcache_start(App *a);
+void tagcache_shutdown(void);
+const TagInfo *tag_get(const App *a, int root, const FsNode *file);
+/* "tag:<path>" key for art_get, if the file has an embedded cover. */
+bool tag_art_key(const App *a, int root, const FsNode *file, char *buf, size_t cap);
+
+/* thumbs.c: video thumbnails. thumb_get fills `out` with an image path (a picture next to the
+ * video, or a frame generated in the background into THC's cache) and returns true; false means
+ * none yet, so draw the placeholder. Generation needs libmpv and can be turned off in settings. */
+bool thumb_get(App *a, int root, const FsNode *file, char *out, size_t cap);
+bool thumb_generate(const MpvApi *api, const char *video, const char *out);
+void thumbs_clear(App *a);
+void thumbs_shutdown(void);
 
 /* art.c */
 SDL_Texture *art_get(App *a, const char *path);

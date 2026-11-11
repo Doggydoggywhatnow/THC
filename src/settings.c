@@ -42,6 +42,7 @@ void settings_defaults(Settings *s)
     s->text_scale = 1.0f;
     s->ui_scale = 1.0f;
     s->remember_history = true;
+    s->video_thumbs = true;
     for (int i = 0; i < ACT_COUNT; i++)
         snprintf(s->hotkey[i], sizeof s->hotkey[i], "%s", k_actions[i].def);
 }
@@ -95,6 +96,7 @@ bool settings_load(Settings *s, const char *path)
         else if (!strcmp(k, "reduced_motion")) s->reduced_motion = parse_bool(v);
         else if (!strcmp(k, "screen_reader")) s->screen_reader = parse_bool(v);
         else if (!strcmp(k, "remember_history")) s->remember_history = parse_bool(v);
+        else if (!strcmp(k, "video_thumbs")) s->video_thumbs = parse_bool(v);
         else if (!strcmp(k, "last_portal")) s->last_portal = (int)clampd(atoi(v), 0, 2);
         else if (!strncmp(k, "section.", 8)) {
             for (int i = 0; i < SECTION_COUNT; i++)
@@ -147,6 +149,7 @@ bool settings_save(const Settings *s, const char *path)
     fprintf(f, "screen_reader = %d\n", s->screen_reader);
     fprintf(f, "\n[privacy]\n");
     fprintf(f, "remember_history = %d\n", s->remember_history);
+    fprintf(f, "video_thumbs = %d\n", s->video_thumbs);
     fprintf(f, "\n[hotkeys]\n");
     for (int i = 0; i < ACT_COUNT; i++) fprintf(f, "hotkey.%s = %s\n", k_actions[i].key, s->hotkey[i]);
     fprintf(f, "\n[state]\n");

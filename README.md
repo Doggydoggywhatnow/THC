@@ -63,6 +63,8 @@ THC is a nod to getting high and watching movies, listening to music, and just e
 - Optional library sections: Anime, Television, Cartoons, and Movies
 - **Resume playback:** remembers your last position in each video file
 - **Watched tracking:** a playback bar and checkmark under each video
+- **Video thumbnails:** a picture next to the video, or a frame THC grabs from it, on episodes and posters
+- **Tags from your audio files:** titles, artists, albums, track numbers and embedded cover art
 - Audio effect plugin support *(later release)*
 - Audiobook support with features suited to listening to books
 - Its own MPV configuration, separate from any standalone MPV install, with all of MPV's config options available
@@ -115,6 +117,26 @@ THC is forgiving about names:
 - **Episodes:** `S01E02`, `S01E01-E02`, `1x02`, `Episode 2`, `Ep. 2`, `E02`, anime-style `Show - 02 [1080p]`, or a leading number (`02 - Title`). Episodes are ordered by number, so episode 10 comes after episode 9.
 - **Titles** are cleaned up for display: `Blade.Runner.2049.2017.1080p.BluRay.mkv` is shown as *Blade Runner 2049 (2017)*.
 - Episodes placed straight in the show folder are grouped by the season in their names.
+
+### Tags in your audio files
+
+Music and audiobooks keep their folder structure, but THC also reads the **tags inside the files**, so things look right even when file names are messy:
+
+- **Titles, artists, albums, track and disc numbers, year and genre**, plus the **cover art** embedded in the file. Albums are ordered by disc and track number when every file has one, otherwise by file name.
+- **Audiobooks:** title, author, narrator, cover and the number of M4B chapters.
+- **Formats:** MP3 (ID3v1, v2.2, v2.3, v2.4), FLAC and OGG (Vorbis comments and pictures), M4B/M4A (iTunes tags and covers), WAV (RIFF INFO and embedded ID3).
+- **Order of preference:** a tag wins over a folder or file name; an embedded cover wins over a cover image in the folder.
+- Tags are read in the background after each scan, so browsing never waits on your disk. Reading is strictly read-only: THC never writes or "fixes" tags, and it never looks anything up online.
+
+### Video thumbnails
+
+Videos get a thumbnail from, in order:
+
+1. a **picture next to the video**: `Name.jpg`, `Name-thumb.jpg`, `Name-poster.png`, `Name-landscape.jpg` or `Name-fanart.jpg`;
+2. a **frame grabbed from the video itself** by a hidden MPV (no window, no sound), taken about 10% in and skipping black frames;
+3. the card's normal colorful placeholder.
+
+Generated thumbnails are cached in THC's own `thumbs/` folder (never next to your media), made in the background so scrolling stays smooth, and the cache stays under about 500 MB. A file's thumbnail is kept when you rename or move it and rebuilt when the file changes. Turn them off, or clear the cache, in **Settings → Library → Thumbnails**.
 
 ### Movies and music
 
@@ -194,7 +216,7 @@ THC has its own separate area for configuring the MPV it uses. That means you ca
 
 There were no mockups; these are the decisions behind the look, so it stays consistent:
 
-- **A streaming-service layout.** A top bar with the THC wordmark, the three portals (Video, Music, Audiobooks) and Settings. Pages scroll vertically; rows of cards scroll sideways. Cards lift slightly under the mouse or keyboard focus.
+- **A streaming-service layout.** A top bar with the THC logo, the three portals (Video, Music, Audiobooks). The **logo is the way in to About and Settings** (below). Pages scroll vertically; rows of cards scroll sideways. Cards lift slightly under the mouse or keyboard focus.
 - **Each portal has its own look,** in both dark and light mode:
   - **Video, "Cinema":** deep navy with an ember (orange to rose) accent. Tall 2:3 posters, wide 16:9 cards for Continue watching and Up next, a large banner at the top.
   - **Music, "Vinyl":** plum night with mint and violet. Round artist avatars, square album covers, an album page with the cover beside the track list.
@@ -205,18 +227,24 @@ There were no mockups; these are the decisions behind the look, so it stays cons
 - **Accessibility first:** everything is reachable with the keyboard and has a visible focus ring; text size and interface scale are separate; high-contrast and reduced-motion modes; the system's light or dark setting is followed by default.
 - **Drawing:** THC draws its interface itself on top of SDL3 (anti-aliased shapes, soft shadows, vector icons), with no toolkit dependency, so it looks the same everywhere.
 
+### About and Settings
+
+Click the **THC logo** (or press **Ctrl+,**) to open one scrolling page. At the top is **About**: the logo with a small version number, what THC is, a link to the project, the licenses of what it is built with. **Scroll past it, or press "Jump to settings", and the settings begin**, in sections (Library, Playback, Appearance, Accessibility, Hotkeys, MPV, Privacy). Click the logo again, press Escape, or choose a portal to leave. The logo has a visible focus ring and a tooltip, and works from the keyboard.
+
 ## Watch tracking and MPV configuration
 
 THC embeds MPV through **libmpv**, so it can track your viewing without taking anything away from MPV.
 
 ### Tracking watch times
 
-1. **Resume:** when you play a file, THC looks up its saved position and starts MPV there using MPV's `start` option.
+1. **Resume:** when you play a file, THC looks up its saved position and starts MPV there with MPV's `start` option (always set, so "from the beginning" is explicit too).
 2. **Observe:** while the file plays, THC watches MPV's own properties (`time-pos`, `duration`, `pause`, and `eof-reached`) and listens for MPV's playback events (such as end-of-file).
 3. **Save:** THC writes your position to its local SQLite database periodically, and also on pause, on stop, and when you quit, so a crash loses at most a few seconds.
 4. **Mark as watched:** once you pass the **watched threshold** (by default, 90% of the file), THC records the file as watched and shows the checkmark. That way skipping the credits still counts. The threshold is configurable.
 
 THC only reads these properties. It doesn't change playback, and it never writes into your media files.
+
+**THC's history is the only record of where you stopped.** MPV has a resume system of its own (`watch_later` files), which could compete with THC's and bring back an older position. So THC switches it off for its own MPV: `resume-playback` and `save-position-on-quit` are forced to `no`, and `watch-later-directory` is pinned inside THC's own folder, whatever your `mpv.conf` says. Everything else in `mpv.conf` still applies. *Clear watch history* also clears anything MPV left in THC's folder.
 
 ### Keeping every MPV setting
 
@@ -314,6 +342,7 @@ THC lets you change many things to suit you, all in **Settings**:
 ### Library
 - Library folders (music, video, audiobooks) and a folder for each section
 - How your files are sorted and presented, and which section a show appears in
+- **Video thumbnails:** on or off, and clear the cache
 - Rescan
 
 ### Playback
@@ -378,6 +407,9 @@ THC builds on MPV, which has a wide range of accessibility features, and adds us
 - [x] Editable hotkeys
 - [x] Windows, Linux (Wayland and X11), and macOS builds (built and tested in CI)
 - [ ] Screen reader support
+- [x] Tags and embedded cover art from audio files
+- [x] Video thumbnails
+- [x] The logo opens About and Settings
 - [ ] Gapless music playback
 - [ ] *(future, optional)* Fetching episode and season descriptions. This would be strictly opt-in and off by default, to keep THC private.
 

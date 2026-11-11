@@ -126,7 +126,9 @@ add_library(thc_core STATIC
   src/fstree.c
   src/history.c
   src/library.c
-  src/settings.c)
+  src/settings.c
+  src/tags.c
+  src/thumbkey.c)
 target_include_directories(thc_core PUBLIC include)
 target_link_libraries(thc_core PUBLIC SQLite::SQLite3)
 if(UNIX)
@@ -158,6 +160,9 @@ if(THC_BUILD_APP)
     src/portal_music.c
     src/portal_video.c
     src/scan.c
+    src/tagcache.c
+    src/thumbgen.c
+    src/thumbs.c
     src/screen_settings.c
     src/screen_setup.c
     src/third_party.c

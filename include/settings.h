@@ -71,6 +71,8 @@ typedef struct Settings {
     int skip_seconds;           /* audiobook skip forward/back */
     char libmpv_path[THC_PATH_MAX];
 
+    bool video_thumbs;          /* generate thumbnails from video frames */
+
     /* Appearance */
     int theme;                  /* THEME_* */
     int accent;                 /* 0 = portal default, else preset */

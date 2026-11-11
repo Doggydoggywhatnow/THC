@@ -703,6 +703,12 @@ void ui_scroll_reset(Ui *ui, Uint32 id)
     r->off = r->target = 0;
 }
 
+void ui_scroll_to(Ui *ui, Uint32 id, float pixels)
+{
+    UiRegion *r = region_get(ui, id);
+    r->target = pixels < 0 ? 0 : pixels;
+}
+
 float ui_anim(Ui *ui, float *v, float target, float speed)
 {
     if (ui->reduced_motion) {
@@ -1495,6 +1501,18 @@ bool ui_button(Ui *ui, Uint32 id, SDL_FRect r, const char *label, UiIcon icon, b
     return st.activated;
 }
 
+void ui_tooltip(Ui *ui, SDL_FRect r, const char *text)
+{
+    const Theme *t = &ui->th;
+    float tw = ui_text_w(ui, FONT_REGULAR, TS_SMALL, text) + dp(ui, 16);
+    float th = ui_line_h(ui, TS_SMALL) + dp(ui, 8);
+    float tx = SDL_clamp(r.x + r.w / 2 - tw / 2, dp(ui, 4), ui->w - tw - dp(ui, 4));
+    SDL_FRect tr = { tx, r.y + r.h + dp(ui, 6), tw, th };
+    if (tr.y + tr.h > ui->h) tr.y = r.y - th - dp(ui, 6);
+    ui_fill(ui, tr, t->text, dp(ui, 6));
+    ui_text(ui, FONT_REGULAR, TS_SMALL, tr.x + dp(ui, 8), tr.y + dp(ui, 4), t->bg, text);
+}
+
 bool ui_icon_button(Ui *ui, Uint32 id, SDL_FRect r, UiIcon icon, const char *tooltip)
 {
     UiItemState st = ui_item(ui, id, r);
@@ -1504,15 +1522,7 @@ bool ui_icon_button(Ui *ui, Uint32 id, SDL_FRect r, UiIcon icon, const char *too
     float pad = r.h * 0.24f;
     ui_icon(ui, icon, (SDL_FRect){ r.x + pad, r.y + pad, r.w - 2 * pad, r.h - 2 * pad }, t->text);
     if (st.focused) ui_focus_ring(ui, r, rad);
-    if (st.hover && tooltip) {
-        float tw = ui_text_w(ui, FONT_REGULAR, TS_SMALL, tooltip) + dp(ui, 16);
-        float th = ui_line_h(ui, TS_SMALL) + dp(ui, 8);
-        float tx = SDL_clamp(r.x + r.w / 2 - tw / 2, dp(ui, 4), ui->w - tw - dp(ui, 4));
-        SDL_FRect tr = { tx, r.y + r.h + dp(ui, 6), tw, th };
-        if (tr.y + tr.h > ui->h) tr.y = r.y - th - dp(ui, 6);
-        ui_fill(ui, tr, t->text, dp(ui, 6));
-        ui_text(ui, FONT_REGULAR, TS_SMALL, tr.x + dp(ui, 8), tr.y + dp(ui, 4), t->bg, tooltip);
-    }
+    if ((st.hover || st.focused) && tooltip) ui_tooltip(ui, r, tooltip);
     return st.activated;
 }
 

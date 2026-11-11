@@ -582,6 +582,7 @@ int main(int argc, char **argv)
         if (scan_poll(a)) {
             a->focus_file = NULL;
             app_rebuild_library(a);
+            tagcache_start(a);
             app_history_changed();
         }
         pump_video(a);
@@ -594,6 +595,8 @@ int main(int argc, char **argv)
         video_stop(&a->video);
     }
     music_shutdown(a);
+    tagcache_shutdown();
+    thumbs_shutdown();
     app_save_settings(a);
     if (a->scan_thread) SDL_WaitThread(a->scan_thread, NULL);
     library_clear(&a->vlib);

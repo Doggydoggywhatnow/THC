@@ -156,6 +156,8 @@ void ui_focus_ring(Ui *ui, SDL_FRect r, float radius);
 float ui_scroll_begin(Ui *ui, Uint32 id, SDL_FRect view, bool horizontal);
 void ui_scroll_end(Ui *ui, float content_len);
 void ui_scroll_reset(Ui *ui, Uint32 id);
+/* Smoothly scroll a region to an offset in pixels (clamped on the next frame). */
+void ui_scroll_to(Ui *ui, Uint32 id, float pixels);
 
 void ui_clip_push(Ui *ui, SDL_FRect r);
 void ui_clip_pop(Ui *ui);
@@ -203,6 +205,8 @@ void ui_icon(Ui *ui, UiIcon icon, SDL_FRect box, Color c);
 /* Widgets. All return true when activated. */
 bool ui_button(Ui *ui, Uint32 id, SDL_FRect r, const char *label, UiIcon icon, bool primary);
 bool ui_icon_button(Ui *ui, Uint32 id, SDL_FRect r, UiIcon icon, const char *tooltip);
+/* A small tooltip below (or above) an anchor rectangle. */
+void ui_tooltip(Ui *ui, SDL_FRect anchor, const char *text);
 bool ui_pill(Ui *ui, Uint32 id, SDL_FRect r, const char *label, bool selected);
 bool ui_toggle(Ui *ui, Uint32 id, SDL_FRect r, const char *label, const char *hint, bool *value);
 /* Horizontal slider. Arrow keys adjust while focused. Returns true on change. */

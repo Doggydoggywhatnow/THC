@@ -54,6 +54,9 @@ void video_seek_abs(VideoSession *s, double seconds);
 void video_set_speed(VideoSession *s, double speed);
 void video_set_volume(VideoSession *s, double volume_percent);
 
+/* Delete mpv's own saved positions in THC's config folder (used by "clear history"). */
+void video_clear_watch_later(const char *config_dir);
+
 /* Ask mpv to quit and release the handle. */
 void video_stop(VideoSession *s);
 

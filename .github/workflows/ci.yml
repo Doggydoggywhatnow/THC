@@ -16,12 +16,13 @@ jobs:
 
       # SDL3 is built from source on Linux and Windows (Ubuntu has no SDL3
       # package yet); macOS uses Homebrew. libmpv is loaded at run time, so it
-      # is only needed to play media, not to build or test.
+      # is only needed to play media; on Linux it is installed so the libmpv tests
+      # (resume rules, thumbnails) run instead of skipping.
       - name: Install dependencies (Linux)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y nasm libsqlite3-dev \
+          sudo apt-get install -y nasm libsqlite3-dev libmpv2 \
             libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev \
             libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev \
             wayland-protocols libegl1-mesa-dev libgl-dev libdrm-dev libgbm-dev \
