@@ -204,14 +204,32 @@ Launch THC, pick your music and video folders (or skip them), and start browsing
 
 ## Configuration
 
-THC lets you change many things to suit you, including:
+THC lets you change many things to suit you. Planned settings include:
 
-- Library folders and sections
-- How your files are sorted
-- THC's own MPV configuration, kept separate from any standalone MPV
-- **Editable hotkeys:** keyboard shortcuts can be remapped
-- Appearance
+### Library
+- Library folders (music and video) and which sections are enabled
+- How your files are sorted and presented
 - Where playback state is stored
+
+### Playback
+- **Watched threshold:** the point at which a file counts as finished (default 90%)
+- THC's own MPV configuration, kept separate from any standalone MPV, with all of MPV's options available
+- **Editable hotkeys:** keyboard shortcuts can be remapped
+
+### Appearance
+- **Light and dark mode**
+- **Fonts:** typeface and text size
+- Interface scaling
+- Accent colors and theme
+
+### Accessibility
+- **High-contrast mode**
+- **Large text and interface scaling** for easier reading
+- **Full keyboard navigation** of the whole interface
+- **Reduced motion:** turn off animations and transitions
+- **Subtitle styling:** font, size, color, and background (through MPV)
+- All of MPV's built-in accessibility features
+- Screen reader support *(planned)*
 
 Full option documentation will be added as settings are finalized.
 
