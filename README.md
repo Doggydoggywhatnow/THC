@@ -4,7 +4,7 @@
 
 THC is a graphical interface for your local media, written in C. It shows what's already on your device, built around the way you already organize your files, and makes browsing it feel as unique and enjoyable as booting up a streaming service, without the streaming service. No accounts, no uploads, no subscriptions: just your library, on your device.
 
-> **Status:** early development. Sections marked *(planned)* describe where THC is headed rather than what ships today.
+> **Status:** version 0.1.0, an early demo of the full design. Sections marked *(planned)* or *(later)* describe where THC is headed rather than what ships today.
 
 ---
 
@@ -21,6 +21,7 @@ THC is a graphical interface for your local media, written in C. It shows what's
 - [Supported formats](#supported-formats)
 - [Platforms](#platforms)
 - [How it works](#how-it-works)
+- [Interface design](#interface-design)
 - [Watch tracking and MPV configuration](#watch-tracking-and-mpv-configuration)
 - [Building from source](#building-from-source)
 - [Usage](#usage)
@@ -75,7 +76,7 @@ On first startup, THC lets you choose, or skip:
 - a **music folder**
 - a **video folder**
 
-Each folder gets its own "portal," a distinct design for displaying its files. You can set up one, both, or neither and add more later.
+Pick each with your system's folder picker, or type the path. Each folder gets its own "portal," a distinct design for displaying its files. You can set up one, both, or neither and add more later in **Settings → Library**, where you can also add an **audiobooks folder** and a folder for each library section.
 
 ## Library sections
 
@@ -85,6 +86,12 @@ THC reads your files as they're already sorted, but you can change that sorting 
 - **Television** (live action)
 - **Cartoons**
 - **Movies**
+
+A section gets its content in one of three ways:
+
+1. A folder named after it inside your video folder (`Anime`, `TV`, `TV Shows`, `Television`, `Series`, `Cartoons`, `Animation`, `Movies`, `Films`, in any letter case).
+2. A separate folder chosen for that section in **Settings → Library**.
+3. Automatic detection for everything else in the video folder: folders that look like shows go to Television, single files and movie folders go to Movies.
 
 ### Folder structure
 
@@ -101,21 +108,48 @@ Show Name/
 
 That is, **show → seasons → episodes**. THC relies on this layout to group episodes, track progress per season, and show what you've watched.
 
+THC is forgiving about names:
+
+- **Seasons:** `Season 2`, `S02`, `Series 2`, `Book 1 Water`, `Specials` (shown last), or a plain number.
+- **Episodes:** `S01E02`, `S01E01-E02`, `1x02`, `Episode 2`, `Ep. 2`, `E02`, anime-style `Show - 02 [1080p]`, or a leading number (`02 - Title`). Episodes are ordered by number, so episode 10 comes after episode 9.
+- **Titles** are cleaned up for display: `Blade.Runner.2049.2017.1080p.BluRay.mkv` is shown as *Blade Runner 2049 (2017)*.
+- Episodes placed straight in the show folder are grouped by the season in their names.
+
 ### Movies and music
 
-- **Movies:** one file or one folder per movie.
-- **Music:** artist → album → track.
+- **Movies:** one file or one folder per movie. In a movie folder the largest video is the film; extras are left out.
+- **Music:** artist → album → track. Loose songs in the music folder are listed too.
+- **Audiobooks:** author → book → files (`Author/Book/01.mp3`), one file per book (`Author/Book.m4b`), or a book folder without an author.
+
+### Changing how things are sorted
+
+Sorting only changes what you see in THC:
+
+- **Sort order:** folder order, A to Z, recently added, or recently watched.
+- **Move a show to another section** from its page (for example, a cartoon that was detected as Television). THC remembers this in its settings file; your folders stay exactly as they are.
+- **Browse folders** on the video home page shows your folders exactly as they are on disk.
 
 ## Watch history
 
 THC stores and displays your viewing history right under each video file: a playback bar showing how far you got, and a checkmark once you've watched it. Keeping up with a show is a glance at the screen.
 
-Media you play opens in MPV, and THC picks up your progress from there.
+Media you play opens in MPV, and THC picks up your progress from there. The video home page builds on this history:
+
+- **Continue watching:** everything you stopped partway through, newest first, with a big banner for the most recent one.
+- **Up next:** the next unwatched episode of each show you've been watching.
+- **Show pages** show progress per show and per season, and can mark a whole season watched or unwatched. The **W** key toggles watched on the focused video.
 
 ## Audio and audiobooks
 
+- **Music** plays inside THC, with a player bar at the bottom: previous, play/pause, next, skip back and forward, a seek bar and volume. An album keeps playing through its tracks, whatever their formats.
+- **Audiobook support** covers **M4B** and **MP3**, with features suited to listening to books:
+  - your place is remembered in every book and every part of it, and **Resume** picks up where you stopped;
+  - playback **speed** from 0.75x to 2.5x, keeping the voice's pitch (through MPV);
+  - a **sleep timer** (15, 30 or 60 minutes, or the end of the chapter);
+  - **skip** back or forward by a set number of seconds (30 by default);
+  - **chapter skipping** inside M4B files;
+  - **Start over**, and finished parts get the same checkmark as watched videos.
 - **Audio effect plugins** are planned for a later release.
-- **Audiobook support** covers **M4B** and **MP3**, along with features suited to audiobooks. *(planned: feature details to be documented.)*
 
 ## Supported formats
 
@@ -136,19 +170,39 @@ THC is available on **Windows**, **Linux**, and **macOS**. On Linux it runs on *
 
 THC ships as a **separate, dedicated build for each operating system**, rather than a single universal package.
 
+Platform notes for 0.1.0:
+
+- CI builds and tests THC on Windows (x86-64, MSVC), Linux (x86-64) and macOS (Apple Silicon) on every push, including lib-Peep's assembly.
+- Video playback opens MPV's own window through libmpv. This was tested on Linux; on macOS, libmpv's ability to open its own window depends on how libmpv was built, which has not been tested yet.
+
 ## How it works
 
 THC is a graphical layer on top of proven components:
 
-- **Video** is played through MPV, which handles decoding, rendering, and a broad range of container and codec support.
+- **Video** is played through MPV, which handles decoding, rendering, and a broad range of container and codec support. THC loads **libmpv** when it starts (it is not linked into THC) and lets MPV open its own window, so MPV's on-screen controls, key bindings, scripts and shaders all work as usual.
 - **Lossless audio** (FLAC and WAV) is handled by [lib-Peep](https://github.com/Doggydoggywhatnow/lib-Peep).
-- **Other audio formats** (OGG, MP3, M4B) use public domain codecs.
-- **Interface** is built with SDL3 and runs the same way on Windows, Linux (Wayland and X11), and macOS.
+- **Other audio formats:** OGG and MP3 use public domain codecs (stb_vorbis and dr_mp3), plugged into lib-Peep's codec interface. M4B, M4A, AAC and Opus play through MPV without a window.
+- **Interface** is built with SDL3 and runs the same way on Windows, Linux (Wayland and X11), and macOS. SDL3 also plays THC's own audio.
 - **Watch history** is stored in a local SQLite database in your OS's standard data directory. Entries are keyed by relative path within the library plus file size and duration, so renaming or moving a file doesn't lose its history.
 - **Full MPV configuration:** every MPV option is available to THC, while still tracking your history.
 - **Playback state** (last position and watched status) is stored locally on your device and never transmitted.
 
 THC has its own separate area for configuring the MPV it uses. That means you can keep MPV installed standalone with your own settings, and THC's setup won't interfere with it (and vice versa).
+
+## Interface design
+
+There were no mockups; these are the decisions behind the look, so it stays consistent:
+
+- **A streaming-service layout.** A top bar with the THC wordmark, the three portals (Video, Music, Audiobooks) and Settings. Pages scroll vertically; rows of cards scroll sideways. Cards lift slightly under the mouse or keyboard focus.
+- **Each portal has its own look,** in both dark and light mode:
+  - **Video, "Cinema":** deep navy with an ember (orange to rose) accent. Tall 2:3 posters, wide 16:9 cards for Continue watching and Up next, a large banner at the top.
+  - **Music, "Vinyl":** plum night with mint and violet. Round artist avatars, square album covers, an album page with the cover beside the track list.
+  - **Audiobooks, "Library":** warm paper and ink with an amber accent. Covers are drawn as books with a spine.
+- **The playback bar and checkmark** sit under every video: an accent-colored bar for progress, which turns green with a round checkmark once watched. Shows use the same bar for "episodes watched out of all".
+- **Art:** `poster`, `cover`, `folder`, `front`, `album` or `show` images (`.jpg` or `.png`) next to your media are used as artwork. Without one, THC draws a gradient made from the title, so every show still gets a distinct card.
+- **Type:** Atkinson Hyperlegible, a typeface designed by the Braille Institute for low-vision readers, bundled with THC. Characters it lacks (Japanese titles, for example) fall back to fonts already on your system.
+- **Accessibility first:** everything is reachable with the keyboard and has a visible focus ring; text size and interface scale are separate; high-contrast and reduced-motion modes; the system's light or dark setting is followed by default.
+- **Drawing:** THC draws its interface itself on top of SDL3 (anti-aliased shapes, soft shadows, vector icons), with no toolkit dependency, so it looks the same everywhere.
 
 ## Watch tracking and MPV configuration
 
@@ -179,26 +233,34 @@ Want THC to start from your existing MPV setup? Copy your config files into THC'
 
 ## Building from source
 
-*(planned: build instructions will be added as the project takes shape.)*
+Requirements:
 
-Expected requirements:
-
-- A C compiler (GCC, Clang, or MSVC)
-- A build tool (Make or CMake)
-- libmpv development headers
-- SDL3
-- SQLite
-- [lib-Peep](https://github.com/Doggydoggywhatnow/lib-Peep)
+- A C11 compiler (GCC, Clang, or MSVC) and CMake 3.20 or newer
+- [NASM](https://nasm.us) on x86-64, for lib-Peep's assembly (ARM64 uses the compiler's own assembler)
+- SDL3 (if it is not installed, CMake downloads and builds it)
+- SQLite (if it is not installed, CMake downloads the amalgamation)
+- lib-Peep, dr_mp3, stb and the font are included in the repository (`third_party/`, `assets/`)
+- At run time, **libmpv** for video (and M4B/M4A/Opus audio)
 
 ```bash
 git clone <repository-url> THC
 cd THC
-# build steps coming soon
+cmake -S . -B build
+cmake --build build
+ctest --test-dir build
 ```
 
-## Usage
+Getting the dependencies:
 
-*(planned)*
+- **Linux (Debian/Ubuntu):** `sudo apt install build-essential cmake nasm libsqlite3-dev libmpv2` plus SDL3's build dependencies (X11 and Wayland development packages) if your distribution has no SDL3 package yet.
+- **macOS:** `brew install cmake sdl3 sqlite mpv`
+- **Windows:** Visual Studio with C++ and CMake, plus NASM. For video, put `libmpv-2.dll` next to `thc.exe` (or set its path in Settings → MPV).
+
+If libmpv lives somewhere unusual, set `THC_LIBMPV` to its full path or choose it in **Settings → MPV**. Build options: `-DTHC_USE_PEEP=OFF` plays FLAC, WAV, MP3 and OGG through MPV instead; `-DTHC_FETCH_DEPS=OFF` turns off the downloads.
+
+The tests cover the watch history database, the folder parser, the settings file, and audio decoding through lib-Peep.
+
+## Usage
 
 ```bash
 thc
@@ -206,36 +268,69 @@ thc
 
 Launch THC, pick your music and video folders (or skip them), and start browsing.
 
+Default keys (all can be changed in **Settings → Hotkeys**):
+
+| Key | Action |
+| --- | --- |
+| Arrow keys | Move between items |
+| Tab / Shift+Tab | Next / previous item |
+| Enter | Open or play |
+| Escape / Backspace | Back |
+| 1 / 2 / 3 | Video / Music / Audiobooks |
+| Ctrl+, | Settings |
+| Space | Play or pause music or an audiobook |
+| Ctrl+Right / Ctrl+Left | Next / previous track |
+| J / L | Skip back / forward |
+| - / = | Volume down / up |
+| W | Mark the focused video watched or not |
+| Ctrl+= / Ctrl+- | Larger / smaller text |
+| F2 | Switch light and dark |
+| F5 | Rescan libraries |
+| F11 | Fullscreen |
+
+Inside the video window, MPV's own keys apply (and THC's `input.conf`).
+
 ## Configuration
 
-THC lets you change many things to suit you. Planned settings include:
+THC lets you change many things to suit you, all in **Settings**:
 
 ### Library
-- Library folders (music and video) and which sections are enabled
-- How your files are sorted and presented
-- Where playback state is stored
+- Library folders (music, video, audiobooks) and a folder for each section
+- How your files are sorted and presented, and which section a show appears in
+- Rescan
 
 ### Playback
 - **Watched threshold:** the point at which a file counts as finished (default 90%)
+- Volume, audiobook speed and skip length
 - THC's own MPV configuration, kept separate from any standalone MPV, with all of MPV's options available
 - **Editable hotkeys:** keyboard shortcuts can be remapped
 
 ### Appearance
-- **Light and dark mode**
-- **Fonts:** typeface and text size
+- **Light and dark mode**, or follow the system
+- **Fonts:** the bundled Atkinson Hyperlegible or any `.ttf`/`.otf` file, and text size
 - Interface scaling
-- Accent colors and theme
+- Accent colors (portal default, Ember, Rose, Ocean, Mint, Violet, Gold)
 
 ### Accessibility
 - **High-contrast mode**
-- **Large text and interface scaling** for easier reading
+- **Large text and interface scaling** for easier reading (75% to 200%, set separately)
 - **Full keyboard navigation** of the whole interface
 - **Reduced motion:** turn off animations and transitions
 - **Subtitle styling:** font, size, color, and background (through MPV)
 - All of MPV's built-in accessibility features
 - Screen reader support *(planned)*
 
-Full option documentation will be added as settings are finalized.
+### Where THC keeps its files
+
+Everything lives in your OS's standard data directory:
+
+| OS | Folder |
+| --- | --- |
+| Linux | `~/.local/share/THC/THC/` (or `$XDG_DATA_HOME/THC/THC/`) |
+| macOS | `~/Library/Application Support/THC/THC/` |
+| Windows | `%APPDATA%\THC\THC\` |
+
+Inside it: `settings.ini` (plain text, editable while THC is closed), `history.db` (watch history), and `mpv/` (THC's own MPV configuration: `mpv.conf`, `input.conf`, `scripts/`, `shaders/`).
 
 ## Privacy
 
@@ -254,17 +349,19 @@ THC builds on MPV, which has a wide range of accessibility features, and adds us
 
 ## Roadmap
 
-- [ ] Core playback for video and audio
-- [ ] First-launch folder setup for music and video
-- [ ] Music and video portals
-- [ ] Library sections (Anime, Television, Cartoons, Movies)
-- [ ] Resume from last position
-- [ ] Watched tracking with playback bar and checkmark
-- [ ] Separate MPV configuration for THC
+- [x] Core playback for video and audio
+- [x] First-launch folder setup for music and video
+- [x] Music and video portals
+- [x] Library sections (Anime, Television, Cartoons, Movies)
+- [x] Resume from last position
+- [x] Watched tracking with playback bar and checkmark
+- [x] Separate MPV configuration for THC
 - [ ] Audio effect plugins (later)
-- [ ] Audiobook features
-- [ ] Editable hotkeys
-- [ ] Windows, Linux (Wayland and X11), and macOS builds
+- [x] Audiobook features (resume, speed, sleep timer, skip, chapters)
+- [x] Editable hotkeys
+- [x] Windows, Linux (Wayland and X11), and macOS builds (built and tested in CI)
+- [ ] Screen reader support
+- [ ] Gapless music playback
 - [ ] *(future, optional)* Fetching episode and season descriptions. This would be strictly opt-in and off by default, to keep THC private.
 
 ## FAQ

@@ -12,7 +12,7 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       # SDL3 is built from source on Linux and Windows (Ubuntu has no SDL3
       # package yet); macOS uses Homebrew. libmpv is loaded at run time, so it
