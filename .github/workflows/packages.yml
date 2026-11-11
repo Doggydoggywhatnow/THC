@@ -43,6 +43,7 @@ jobs:
           sed -i 's|^source=.*|source="thc-0.1.0.tar.gz"|' /tmp/apk/APKBUILD
           cd /tmp/apk
           abuild-keygen -an
+          cp ~/.abuild/*.rsa.pub /etc/apk/keys/
           abuild -F checksum
           abuild -F -r -P /tmp/repo
           mkdir -p $GITHUB_WORKSPACE/out
