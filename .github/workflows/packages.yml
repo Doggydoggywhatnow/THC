@@ -43,7 +43,7 @@ jobs:
           sed -i 's|^source=.*|source="thc-0.1.0.tar.gz"|' /tmp/apk/APKBUILD
           cd /tmp/apk
           abuild-keygen -an
-          cp ~/.abuild/*.rsa.pub /etc/apk/keys/
+          cp ~/.config/abuild/*.rsa.pub /etc/apk/keys/
           abuild -F checksum
           abuild -F -r -P /tmp/repo
           mkdir -p $GITHUB_WORKSPACE/out
@@ -86,7 +86,7 @@ jobs:
     # Commits the built packages to downloads/ on dev so the README can link
     # to them directly (no GitHub login needed). Pushes by GITHUB_TOKEN do
     # not start new workflow runs.
-    if: github.ref == 'refs/heads/dev' && github.event_name != 'pull_request'
+    if: always() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request'
     needs: [deb-appimage, alpine, void, snap]
     runs-on: ubuntu-latest
     permissions: { contents: write }
@@ -98,9 +98,12 @@ jobs:
       - name: Commit packages
         run: |
           mkdir -p downloads
-          cp dist/thc_0.1.0_amd64.deb dist/THC-*.AppImage dist/*.xbps dist/thc-0.1.0-linux-x86_64.tar.gz downloads/
-          cp dist/thc-0.1.0-r0-alpine-x86_64.apk downloads/
-          cp dist/*.snap downloads/thc_0.1.0_amd64.snap
+          # a package that failed to build this time keeps its previous file
+          for f in dist/thc_0.1.0_amd64.deb dist/THC-*.AppImage dist/*.xbps dist/thc-0.1.0-linux-x86_64.tar.gz \
+                   dist/thc-0.1.0-r0-alpine-x86_64.apk; do
+            [ -f "$f" ] && cp "$f" downloads/
+          done
+          [ -f dist/*.snap ] && cp dist/*.snap downloads/thc_0.1.0_amd64.snap || true
           git config user.name "github-actions"
           git config user.email "actions@users.noreply.github.com"
           git add downloads
