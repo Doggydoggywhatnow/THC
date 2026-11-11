@@ -7,7 +7,7 @@ THC uses `x.y.z` versions: major, minor (big features), patch (small features, f
 ### Added
 - Settings → MPV shows where THC's MPV files are and lets you copy each path (folder, `mpv.conf`, `input.conf`, `script-opts/osc.conf`, shaders). (#17)
 - On-screen controller support: a **Create** button and a layout picker (bottom bar, top bar, box, slim box) for `script-opts/osc.conf`. (#17)
-- GLSL shader support is explained in Settings, with a list of the shaders in THC's `shaders/` folder and buttons to copy a shader's path or its `mpv.conf` line. (#17)
+- GLSL shader support is explained in Settings, with a list of the shaders in THC's `shaders/` folder and buttons to copy a shader's path or its `mpv.conf` line. Every row shows its full path, and the `scripts` folder has Copy path and Create buttons too. (#17)
 - **Config check:** THC asks MPV about every line of `mpv.conf` and lists the ones MPV skips, with line numbers. Controller settings in the wrong file (`layout=topbar` in `mpv.conf`) are called out with the fix, and options THC controls are marked as ignored. Settings also show the libmpv in use and its API version. (#17, #16)
 
 ### Fixed

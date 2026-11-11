@@ -409,7 +409,7 @@ static void write_text(App *a, const char *rel, const char *text)
 }
 
 /* A row for one file or folder in THC's MPV folder: its path, Copy path, and Create if missing. */
-static void path_row(App *a, Layout *L, const char *rel, const char *what, const char *tmpl)
+static void path_row(App *a, Layout *L, const char *rel, const char *what, const char *tmpl, bool is_dir)
 {
     Ui *ui = &a->ui;
     const Theme *t = &ui->th;
@@ -421,26 +421,32 @@ static void path_row(App *a, Layout *L, const char *rel, const char *what, const
     ui_fill(ui, r, t->surface, dp(ui, 12));
     if (t->high_contrast) ui_stroke(ui, r, t->border, dp(ui, 12), dp(ui, 1));
     float bw = dp(ui, 130), bh = dp(ui, 40), pad = dp(ui, 14);
-    float reserve = bw * (exists || !tmpl ? 1 : 2) + pad * 3;
+    bool can_make = !exists && (tmpl || is_dir);
+    float reserve = bw * (can_make ? 2 : 1) + pad * 3;
     char title[160];
     SDL_snprintf(title, sizeof title, "%s%s", rel, exists ? "" : "  (not created yet)");
+    (void)what;
     ui_text_fit(ui, FONT_BOLD, TS_LABEL, r.x + dp(ui, 16), r.y + dp(ui, 12), r.w - reserve, t->text, title);
     ui_text_fit(ui, FONT_REGULAR, TS_SMALL, r.x + dp(ui, 16), r.y + dp(ui, 14) + ui_line_h(ui, TS_LABEL), r.w - reserve,
-                t->text_dim, exists ? full : what);
+                t->text_dim, full);
     float bx = r.x + r.w - pad - bw;
     char id[200];
     SDL_snprintf(id, sizeof id, "mpv-copy:%s", rel);
     if (ui_button(ui, ui_id(id), (SDL_FRect){ bx, r.y + (r.h - bh) / 2, bw, bh }, "Copy path", ICON_NONE, false))
         copy_text(a, full, rel);
-    if (!exists && tmpl) {
+    if (can_make) {
         bx -= bw + pad;
         SDL_snprintf(id, sizeof id, "mpv-make:%s", rel);
         if (ui_button(ui, ui_id(id), (SDL_FRect){ bx, r.y + (r.h - bh) / 2, bw, bh }, "Create", ICON_PLUS, false)) {
-            char dir[THC_PATH_MAX + 64];
-            SDL_strlcpy(dir, full, sizeof dir);
-            char *slash = SDL_strrchr(dir, '/');
-            if (slash) { *slash = 0; SDL_CreateDirectory(dir); }
-            write_text(a, rel, tmpl);
+            if (is_dir) {
+                SDL_CreateDirectory(full);
+            } else {
+                char dir[THC_PATH_MAX + 64];
+                SDL_strlcpy(dir, full, sizeof dir);
+                char *slash = SDL_strrchr(dir, '/');
+                if (slash) { *slash = 0; SDL_CreateDirectory(dir); }
+                write_text(a, rel, tmpl);
+            }
             app_toast(a, "Created %s", rel);
         }
     }
@@ -628,7 +634,7 @@ static void osc_section(App *a, Layout *L)
              "# windowcontrols=auto\n"
              "# seekbarstyle=bar          # bar, diamond or knob\n"
              "# boxalpha=80\n"
-             "# hidetimeout=500\n");
+             "# hidetimeout=500\n", false);
     static const char *const names[] = { "Bottom bar", "Top bar", "Box", "Slim box" };
     static const char *const vals[] = { "bottombar", "topbar", "box", "slimbox" };
     char path[THC_PATH_MAX + 64], cur[64] = "bottombar";
@@ -681,13 +687,13 @@ static void page_mpv(App *a, Layout *L)
              "# hwdec=auto-safe\n"
              "# sub-font-size=46\n"
              "# sub-color=\"#FFFFFF\"\n"
-             "# sub-back-color=\"#C0000000\"\n");
+             "# sub-back-color=\"#C0000000\"\n", false);
     path_row(a, L, "input.conf", "Key bindings inside the video window",
              "# THC's own input.conf: key bindings inside the video window.\n"
              "# Examples:\n"
              "# RIGHT seek 10\n"
-             "# LEFT seek -10\n");
-    path_row(a, L, "scripts", "Lua, JavaScript and C scripts load from here", NULL);
+             "# LEFT seek -10\n", false);
+    path_row(a, L, "scripts", "Lua, JavaScript and C scripts load from here", NULL, true);
     osc_section(a, L);
     shaders_section(a, L);
     config_check(a, L);
