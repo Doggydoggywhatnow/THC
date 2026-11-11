@@ -41,17 +41,17 @@ jobs:
       - name: Build .apk with the APKBUILD
         run: |
           git config --global --add safe.directory "$PWD"
-          git archive --prefix=THC-0.1.2/ -o /tmp/thc-0.1.2.tar.gz HEAD
+          git archive --prefix=THC-0.1.3/ -o /tmp/thc-0.1.3.tar.gz HEAD
           mkdir -p /tmp/apk && cp packaging/alpine/APKBUILD /tmp/apk/
-          cp /tmp/thc-0.1.2.tar.gz /tmp/apk/
-          sed -i 's|^source=.*|source="thc-0.1.2.tar.gz"|' /tmp/apk/APKBUILD
+          cp /tmp/thc-0.1.3.tar.gz /tmp/apk/
+          sed -i 's|^source=.*|source="thc-0.1.3.tar.gz"|' /tmp/apk/APKBUILD
           cd /tmp/apk
           abuild-keygen -an
           cp ~/.config/abuild/*.rsa.pub /etc/apk/keys/
           abuild -F checksum
           abuild -F -r -P /tmp/repo
           mkdir -p $GITHUB_WORKSPACE/out
-          find /tmp/repo -name 'thc-*.apk' -exec cp {} $GITHUB_WORKSPACE/out/thc-0.1.2-r0-alpine-x86_64.apk \;
+          find /tmp/repo -name 'thc-*.apk' -exec cp {} $GITHUB_WORKSPACE/out/thc-0.1.3-r0-alpine-x86_64.apk \;
       - uses: actions/upload-artifact@v4
         with: { name: alpine, path: out/* }
 
@@ -70,7 +70,7 @@ jobs:
           cmake --build build
           DESTDIR=/tmp/destdir cmake --install build
           mkdir -p out && cd out
-          xbps-create -A x86_64 -n thc-0.1.2_1 -s "Lightweight player for the music and videos you already have" \
+          xbps-create -A x86_64 -n thc-0.1.3_1 -s "Lightweight player for the music and videos you already have" \
             -l Unlicense -H https://github.com/Doggydoggywhatnow/THC -D "mpv>=0 sqlite>=0" /tmp/destdir
           ls -l
       - uses: actions/upload-artifact@v4
@@ -93,8 +93,8 @@ jobs:
         run: |
           mkdir -p downloads
           # a package that failed to build this time keeps its previous file
-          for f in dist/thc_0.1.2_amd64.deb dist/THC-*.AppImage dist/*.xbps dist/thc-0.1.2-linux-x86_64.tar.gz \
-                   dist/thc-0.1.2-r0-alpine-x86_64.apk dist/*.snap; do
+          for f in dist/thc_0.1.3_amd64.deb dist/THC-*.AppImage dist/*.xbps dist/thc-0.1.3-linux-x86_64.tar.gz \
+                   dist/thc-0.1.3-r0-alpine-x86_64.apk dist/*.snap; do
             [ -f "$f" ] && cp "$f" downloads/
           done
           git config user.name "github-actions"

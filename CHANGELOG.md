@@ -2,6 +2,11 @@
 
 THC uses `x.y.z` versions: major, minor (big features), patch (small features, fixes, security).
 
+## 0.1.3
+
+### Fixed
+- **History now works across versions.** The history database records a schema version that is only ever raised. A newer THC upgrades an older database (after saving a `history.db.v<N>.bak` copy next to it) and keeps every row; an older THC that meets a newer database leaves its version and extra data alone and still reads and writes the entries it knows. Before, every start reset the version marker. New tests cover 0.1.x databases, unversioned ones, forward migration, newer databases and failed upgrades.
+
 ## 0.1.2
 
 ### Added
@@ -14,7 +19,6 @@ THC uses `x.y.z` versions: major, minor (big features), patch (small features, f
 - Scripts in THC's MPV `scripts/` folder never ran, because libmpv does not autoload them. THC now loads them. (#16)
 - A new test checks that edits to `mpv.conf`, `input.conf`, profiles and scripts change MPV, and that a standalone MPV config is never read. (#16)
 
-- **History now works across versions.** The history database records a schema version that is only ever raised. A newer THC upgrades an older database (after saving a `history.db.v<N>.bak` copy next to it) and keeps every row; an older THC that meets a newer database leaves its version and extra data alone and still reads and writes the entries it knows. Before, every start reset the version marker. New tests cover 0.1.x databases, unversioned ones, forward migration, newer databases and failed upgrades.
 
 ### Checked
 - Resume always follows THC's history (#5) and the logo opens About and Settings on one page (#10); both shipped in 0.1.1 and were re-checked.
