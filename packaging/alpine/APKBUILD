@@ -1,0 +1,22 @@
+# Maintainer: THC contributors <thc@users.noreply.github.com>
+pkgname=thc
+pkgver=0.1.0
+pkgrel=0
+pkgdesc="Lightweight player for the music and videos you already have"
+url="https://github.com/Doggydoggywhatnow/THC"
+arch="x86_64 aarch64"
+license="Unlicense"
+depends="mpv-libs"
+makedepends="cmake samurai nasm sdl3-dev sqlite-dev linux-headers"
+source="$pkgname-$pkgver.tar.gz::https://github.com/Doggydoggywhatnow/THC/archive/refs/tags/v$pkgver.tar.gz"
+builddir="$srcdir/THC-$pkgver"
+options="!check" # tests run in upstream CI
+
+build() {
+	cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr -DTHC_FETCH_DEPS=OFF
+	cmake --build build
+}
+
+package() {
+	DESTDIR="$pkgdir" cmake --install build
+}

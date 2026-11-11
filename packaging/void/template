@@ -1,0 +1,15 @@
+# Template file for 'thc'
+pkgname=thc
+version=0.1.0
+revision=1
+build_style=cmake
+configure_args="-DTHC_FETCH_DEPS=OFF"
+hostmakedepends="pkg-config nasm"
+makedepends="SDL3-devel sqlite-devel"
+depends="mpv"
+short_desc="Lightweight player for the music and videos you already have"
+maintainer="THC contributors <noreply@example.invalid>"
+license="Unlicense"
+homepage="https://github.com/Doggydoggywhatnow/THC"
+distfiles="https://github.com/Doggydoggywhatnow/THC/archive/refs/tags/v${version}.tar.gz"
+checksum=@CHECKSUM@

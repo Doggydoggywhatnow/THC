@@ -1,0 +1,33 @@
+name: thc
+base: core24
+version: '0.1.0'
+summary: Lightweight player for the music and videos you already have
+description: |
+  THC turns your local folders into a streaming-style library with resume,
+  watched tracking, music and audiobooks. Fully local: no network, no accounts.
+grade: stable
+confinement: strict
+license: Unlicense
+icon: packaging/linux/thc.png
+
+apps:
+  thc:
+    command: usr/bin/thc
+    desktop: usr/share/applications/thc.desktop
+    extensions: [gnome]
+    plugs: [home, removable-media, audio-playback, opengl, wayland, x11]
+    environment:
+      THC_LIBMPV: $SNAP/usr/lib/$CRAFT_ARCH_TRIPLET_BUILD_FOR/libmpv.so.2
+
+parts:
+  thc:
+    plugin: cmake
+    source: .
+    cmake-parameters: [-DCMAKE_BUILD_TYPE=Release, -DCMAKE_INSTALL_PREFIX=/usr]
+    build-packages: [nasm, libsqlite3-dev, libx11-dev, libxext-dev, libxrandr-dev, libxcursor-dev,
+                     libxi-dev, libxss-dev, libxkbcommon-dev, libwayland-dev, wayland-protocols,
+                     libegl1-mesa-dev, libgl-dev, libasound2-dev, libpulse-dev, libdbus-1-dev, libudev-dev]
+    stage-packages: [libsqlite3-0, libmpv2]
+    override-prime: |
+      craftctl default
+      sed -i 's|^Icon=thc|Icon=${SNAP}/usr/share/icons/hicolor/512x512/apps/thc.png|' usr/share/applications/thc.desktop

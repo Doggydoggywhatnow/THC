@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.doggydoggywhatnow.thc</id>
+  <name>THC</name>
+  <summary>A lightweight player for the music and videos you already have</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Unlicense</project_license>
+  <description><p>THC turns your local folders into a streaming-style library with resume, watched tracking, music and audiobooks. Fully local.</p></description>
+  <launchable type="desktop-id">thc.desktop</launchable>
+  <url type="homepage">https://github.com/Doggydoggywhatnow/THC</url>
+  <releases><release version="0.1.0" date="2026-11-11"/></releases>
+  <content_rating type="oars-1.1"/>
+</component>
