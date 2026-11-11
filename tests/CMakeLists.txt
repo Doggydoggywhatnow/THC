@@ -36,6 +36,12 @@ if(THC_BUILD_APP)
   target_compile_definitions(test_mpv_resume PRIVATE THC_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
   target_link_libraries(test_mpv_resume PRIVATE SDL3::SDL3)
   add_test(NAME mpv_resume COMMAND test_mpv_resume WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
+  add_executable(test_mpv_config test_mpv_config.c ../src/video.c ../src/mpv_dyn.c)
+  target_include_directories(test_mpv_config PRIVATE ../include)
+  target_compile_definitions(test_mpv_config PRIVATE THC_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")
+  target_link_libraries(test_mpv_config PRIVATE SDL3::SDL3)
+  add_test(NAME mpv_config COMMAND test_mpv_config WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 endif()
 
 add_executable(test_thumbs_core test_thumbs.c)
