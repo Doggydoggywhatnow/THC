@@ -68,7 +68,9 @@ endfunction()
 # thc_core: everything that does not need SDL (tested on its own).
 # ---------------------------------------------------------------------------
 add_library(thc_core STATIC
-  src/history.c)
+  src/fstree.c
+  src/history.c
+  src/settings.c)
 target_include_directories(thc_core PUBLIC include)
 target_link_libraries(thc_core PUBLIC SQLite::SQLite3)
 if(UNIX)
@@ -80,11 +82,34 @@ thc_warnings(thc_core)
 # The THC application.
 # ---------------------------------------------------------------------------
 if(THC_BUILD_APP)
+  # The bundled font (Atkinson Hyperlegible, SIL OFL 1.1) is compiled in.
+  include(cmake/embed.cmake)
+  set(FONT_C ${CMAKE_CURRENT_BINARY_DIR}/thc_fonts.c)
+  embed_file(${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/AtkinsonHyperlegible-Regular.ttf
+             ${CMAKE_CURRENT_BINARY_DIR}/font_regular.c thc_font_regular)
+  embed_file(${CMAKE_CURRENT_SOURCE_DIR}/assets/fonts/AtkinsonHyperlegible-Bold.ttf
+             ${CMAKE_CURRENT_BINARY_DIR}/font_bold.c thc_font_bold)
+
   add_executable(thc WIN32 MACOSX_BUNDLE
     src/main.c
+    src/art.c
+    src/chrome.c
+    src/hotkeys.c
     src/mpv_dyn.c
-    src/video.c)
-  target_include_directories(thc PRIVATE include)
+    src/music.c
+    src/portal_books.c
+    src/portal_music.c
+    src/portal_video.c
+    src/scan.c
+    src/screen_settings.c
+    src/screen_setup.c
+    src/third_party.c
+    src/ui.c
+    src/video.c
+    ${CMAKE_CURRENT_BINARY_DIR}/font_regular.c
+    ${CMAKE_CURRENT_BINARY_DIR}/font_bold.c)
+  target_include_directories(thc PRIVATE include src third_party/stb)
+  set_source_files_properties(src/third_party.c PROPERTIES COMPILE_OPTIONS "$<IF:$<C_COMPILER_ID:MSVC>,/W0,-w>")
   target_compile_definitions(thc PRIVATE THC_VERSION="${PROJECT_VERSION}")
   target_link_libraries(thc PRIVATE thc_core SDL3::SDL3)
   thc_warnings(thc)

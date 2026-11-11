@@ -1,148 +1,582 @@
-/* THC: a lightweight multimedia player. Slice 1: one window, one file. */
+/* THC: a lightweight multimedia player for the music and videos you have. */
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 
-#include "history.h"
-#include "mpv_dyn.h"
-#include "video.h"
+#include <stdarg.h>
+#include <string.h>
 
-typedef struct App {
-    SDL_Window *win;
-    SDL_Renderer *ren;
-    MpvApi mpv;
-    bool have_mpv;
-    VideoSession video;
-    History *history;
-    char playing_key[1024];   /* history key of the file being played */
-    Sint64 playing_size;
-    HistoryEntry last;        /* history of the last played file */
-    bool have_last;
-    Uint32 mpv_event;
-    char data_dir[1024];
-    char mpv_dir[1024];
-    char status[512];
-} App;
+#include "app.h"
+#include "hotkeys.h"
 
-static void save_progress(App *a)
+/* ------------------------------------------------------------------------ */
+/* History cache: library pages ask for many files every frame.              */
+/* ------------------------------------------------------------------------ */
+
+#define HCACHE 8192
+typedef struct HSlot {
+    Uint64 key;
+    Uint64 ver;
+    bool found;
+    HistoryEntry e;
+} HSlot;
+static HSlot g_hcache[HCACHE];
+static Uint64 g_hver = 1;
+
+static Uint64 hash64(const char *s, Sint64 size)
 {
-    if (!a->history || !a->playing_key[0]) return;
-    history_save(a->history, a->playing_key, a->playing_size, a->video.pos, a->video.duration,
-                 HISTORY_DEFAULT_THRESHOLD, a->video.reached_eof);
-    a->have_last = history_get(a->history, a->playing_key, a->playing_size, &a->last);
+    Uint64 h = 1469598103934665603ull;
+    while (*s) { h ^= (Uint8)*s++; h *= 1099511628211ull; }
+    h ^= (Uint64)size;
+    h *= 1099511628211ull;
+    return h ? h : 1;
 }
 
-static void play(App *a, const char *path)
+bool app_history(App *a, const FsNode *file, HistoryEntry *e)
 {
-    VideoOptions o = { a->mpv_dir, 0, false, a->mpv_event };
+    char rel[THC_PATH_MAX];
+    fs_relpath(file, rel, sizeof rel);
+    Uint64 k = hash64(rel, file->size);
+    HSlot *s = &g_hcache[k & (HCACHE - 1)];
+    if (s->key != k || s->ver != g_hver) {
+        s->key = k;
+        s->ver = g_hver;
+        s->found = history_get(a->hist, rel, file->size, &s->e);
+    }
+    *e = s->e;
+    return s->found;
+}
+
+void app_history_changed(void) { g_hver++; }
+
+/* ------------------------------------------------------------------------ */
+
+void app_toast(App *a, const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    SDL_vsnprintf(a->toast, sizeof a->toast, fmt, ap);
+    va_end(ap);
+    a->toast_until = a->ui.time + 3.5;
+}
+
+void app_save_settings(App *a)
+{
+    if (!settings_save(&a->set, a->settings_path)) SDL_Log("could not save %s", a->settings_path);
+}
+
+void app_apply_appearance(App *a)
+{
+    if (a->set.theme == THEME_SYSTEM) a->dark = SDL_GetSystemTheme() != SDL_SYSTEM_THEME_LIGHT;
+    else a->dark = a->set.theme == THEME_DARK;
+    a->ui.text_scale = a->set.text_scale;
+    a->ui.ui_scale = a->set.ui_scale;
+    a->ui.reduced_motion = a->set.reduced_motion;
+}
+
+static int portal_of(Screen s)
+{
+    switch (s) {
+    case SCREEN_MUSIC: return PORTAL_MUSIC;
+    case SCREEN_BOOKS: return PORTAL_BOOKS;
+    case SCREEN_SETTINGS: case SCREEN_SETUP: return PORTAL_NEUTRAL;
+    default: return PORTAL_VIDEO;
+    }
+}
+
+void app_go(App *a, Screen s)
+{
+    if (a->screen == s) {
+        /* pressing the current tab again goes back to the portal's start */
+        if (s == SCREEN_VIDEO) nav_reset(&a->vnav);
+        if (s == SCREEN_MUSIC) nav_reset(&a->mnav);
+        if (s == SCREEN_BOOKS) nav_reset(&a->bnav);
+        return;
+    }
+    if (s >= SCREEN_VIDEO && s <= SCREEN_BOOKS) {
+        a->last_portal = s;
+        a->set.last_portal = s - SCREEN_VIDEO;
+    }
+    a->screen = s;
+    a->ui.focus = 0;
+}
+
+char *app_full_path(const App *a, int root, const FsNode *n, char *buf, size_t cap)
+{
+    char rel[THC_PATH_MAX];
+    fs_relpath(n, rel, sizeof rel);
+    const char *base = a->lib.path[root];
+    size_t bl = strlen(base);
+    bool sep = bl > 0 && (base[bl - 1] == '/' || base[bl - 1] == '\\');
+#ifdef _WIN32
+    for (char *p = rel; *p; p++) if (*p == '/') *p = '\\';
+    SDL_snprintf(buf, cap, "%s%s%s", base, sep ? "" : "\\", rel);
+#else
+    SDL_snprintf(buf, cap, "%s%s%s", base, sep ? "" : "/", rel);
+#endif
+    return buf;
+}
+
+void app_rescan(App *a)
+{
+    scan_start(a);
+}
+
+/* ------------------------------------------------------------------------ */
+/* Folder picker                                                              */
+/* ------------------------------------------------------------------------ */
+
+static void SDLCALL folder_chosen(void *ud, const char *const *list, int filter)
+{
+    (void)filter;
+    App *a = ud;
+    if (!list || !list[0]) return;
+    SDL_LockMutex(a->dlg_mutex);
+    SDL_strlcpy(a->dlg_path, list[0], sizeof a->dlg_path);
+    a->dlg_ready = true;
+    SDL_UnlockMutex(a->dlg_mutex);
+    SDL_Event ev;
+    SDL_zero(ev);
+    ev.type = a->mpv_event;
+    SDL_PushEvent(&ev);
+}
+
+void app_pick_folder(App *a, int target, const char *current)
+{
+    a->dlg_target = target;
+    SDL_ShowOpenFolderDialog(folder_chosen, a, a->win, current && *current ? current : NULL, false);
+}
+
+static char *folder_setting(App *a, int target)
+{
+    switch (target) {
+    case 0: return a->set.music_dir;
+    case 1: return a->set.video_dir;
+    case 2: return a->set.books_dir;
+    default:
+        if (target >= 3 && target < 3 + SECTION_COUNT) return a->set.section_dir[target - 3];
+        return NULL;
+    }
+}
+
+static void poll_dialog(App *a)
+{
+    SDL_LockMutex(a->dlg_mutex);
+    if (a->dlg_ready) {
+        char *dst = folder_setting(a, a->dlg_target);
+        if (dst) SDL_strlcpy(dst, a->dlg_path, THC_PATH_MAX);
+        a->dlg_ready = false;
+        if (a->set.setup_done) {
+            app_save_settings(a);
+            app_rescan(a);
+        }
+    }
+    SDL_UnlockMutex(a->dlg_mutex);
+}
+
+/* ------------------------------------------------------------------------ */
+/* Video playback                                                             */
+/* ------------------------------------------------------------------------ */
+
+static void save_video_progress(App *a)
+{
+    if (!a->play_key[0] || !a->set.remember_history) return;
+    if (a->video.failed && a->video.pos <= 0) return;
+    history_save(a->hist, a->play_key, a->play_size, a->video.pos, a->video.duration,
+                 a->set.watched_threshold, a->video.reached_eof);
+    app_history_changed();
+}
+
+void app_play_video(App *a, int root, const FsNode *file)
+{
     if (!a->have_mpv) {
-        SDL_snprintf(a->status, sizeof a->status, "libmpv was not found");
+        app_toast(a, "libmpv was not found. Install mpv (libmpv) to play videos.");
         return;
     }
     if (a->video.h) {
-        save_progress(a);
+        save_video_progress(a);
         video_stop(&a->video);
     }
-    /* A file opened on its own is keyed by its file name. */
-    const char *name = SDL_strrchr(path, '/');
-#ifdef _WIN32
-    const char *bs = SDL_strrchr(path, '\\');
-    if (bs > name) name = bs;
-#endif
-    SDL_strlcpy(a->playing_key, name ? name + 1 : path, sizeof a->playing_key);
-    SDL_PathInfo info;
-    a->playing_size = SDL_GetPathInfo(path, &info) ? (Sint64)info.size : 0;
-    a->have_last = history_get(a->history, a->playing_key, a->playing_size, &a->last);
-    if (a->have_last) o.start = history_resume_point(&a->last, HISTORY_DEFAULT_THRESHOLD);
-    if (video_play(&a->video, &a->mpv, path, &o))
-        SDL_snprintf(a->status, sizeof a->status, "Playing %s", path);
-    else
-        SDL_snprintf(a->status, sizeof a->status, "%s", a->video.error);
+    char path[THC_PATH_MAX];
+    app_full_path(a, root, file, path, sizeof path);
+    fs_relpath(file, a->play_key, sizeof a->play_key);
+    a->play_size = file->size;
+    SDL_strlcpy(a->play_title, file->name, sizeof a->play_title);
+    char *dot = SDL_strrchr(a->play_title, '.');
+    if (dot && dot != a->play_title) *dot = 0;
+
+    VideoOptions o = { a->mpv_dir, 0, false, a->mpv_event };
+    HistoryEntry e;
+    if (a->set.remember_history && history_get(a->hist, a->play_key, a->play_size, &e))
+        o.start = history_resume_point(&e, a->set.watched_threshold);
+    if (!video_play(&a->video, &a->mpv, path, &o)) {
+        app_toast(a, "%s", a->video.error);
+        a->play_key[0] = 0;
+        return;
+    }
+    if (o.start > 0) {
+        char t[32];
+        fmt_time(o.start, t, sizeof t);
+        app_toast(a, "Resuming %s at %s", a->play_title, t);
+    }
+}
+
+static void pump_video(App *a)
+{
+    int f = video_pump(&a->video);
+    if (f & (VIDEO_EV_PROGRESS | VIDEO_EV_PAUSED | VIDEO_EV_ENDED)) save_video_progress(a);
+    if (f & VIDEO_EV_ENDED) {
+        if (a->video.failed && a->video.pos <= 0) app_toast(a, "%s", a->video.error);
+        a->play_key[0] = 0;
+    }
+}
+
+/* The "now playing in mpv" pill shown while a video plays. */
+static void video_pill(App *a)
+{
+    if (!a->video.active) return;
+    Ui *ui = &a->ui;
+    const Theme *t = &ui->th;
+    float h = dp(ui, 56);
+    float w = SDL_min(ui->w - dp(ui, 48), dp(ui, 560));
+    SDL_FRect r = { (ui->w - w) / 2, ui->h - h - dp(ui, 24), w, h };
+    ui_shadow(ui, r, h / 2, dp(ui, 28), t->shadow);
+    ui_fill(ui, r, t->surface_hi, h / 2);
+    if (t->high_contrast) ui_stroke(ui, r, t->border, h / 2, dp(ui, 2));
+    float is = dp(ui, 28);
+    ui_circle(ui, r.x + h / 2, r.y + h / 2, is / 2 + dp(ui, 4), t->accent);
+    ui_icon(ui, a->video.paused ? ICON_PAUSE : ICON_PLAY,
+            (SDL_FRect){ r.x + h / 2 - is * 0.35f, r.y + h / 2 - is * 0.35f, is * 0.7f, is * 0.7f }, t->on_accent);
+    float x = r.x + h + dp(ui, 4);
+    float bw = dp(ui, 84);
+    char tm[64], p[32], d[32];
+    fmt_time(a->video.pos, p, sizeof p);
+    fmt_time(a->video.duration, d, sizeof d);
+    SDL_snprintf(tm, sizeof tm, "Playing in mpv  \xC2\xB7  %s / %s", p, d);
+    ui_text_fit(ui, FONT_BOLD, TS_BODY, x, r.y + dp(ui, 8), r.w - (x - r.x) - bw - dp(ui, 16), t->text, a->play_title);
+    ui_text_fit(ui, FONT_REGULAR, TS_SMALL, x, r.y + dp(ui, 8) + ui_line_h(ui, TS_BODY), r.w - (x - r.x) - bw - dp(ui, 16),
+                t->text_dim, tm);
+    float frac = a->video.duration > 0 ? (float)(a->video.pos / a->video.duration) : 0;
+    ui_progress(ui, (SDL_FRect){ r.x + h / 2, r.y + h - dp(ui, 4), r.w - h, dp(ui, 3) }, frac, t->accent);
+    ui->layer = 1;
+    if (ui_button(ui, ui_id("video-stop"), (SDL_FRect){ r.x + r.w - bw - dp(ui, 8), r.y + dp(ui, 8), bw, h - dp(ui, 16) },
+                  "Stop", ICON_NONE, false)) {
+        save_video_progress(a);
+        video_stop(&a->video);
+        a->play_key[0] = 0;
+    }
+    ui->layer = 0;
+}
+
+/* ------------------------------------------------------------------------ */
+/* Hotkeys                                                                    */
+/* ------------------------------------------------------------------------ */
+
+static void toggle_theme(App *a)
+{
+    a->set.theme = a->dark ? THEME_LIGHT : THEME_DARK;
+    app_apply_appearance(a);
+    app_save_settings(a);
+}
+
+static void change_text(App *a, float d)
+{
+    a->set.text_scale = SDL_clamp(a->set.text_scale + d, 0.75f, 2.0f);
+    app_apply_appearance(a);
+    app_save_settings(a);
+    app_toast(a, "Text size %d%%", (int)(a->set.text_scale * 100 + 0.5f));
+}
+
+static bool handle_hotkey(App *a, const SDL_KeyboardEvent *k)
+{
+    for (int i = 0; i < ACT_COUNT; i++) {
+        if (!hotkey_matches(a->set.hotkey[i], k->key, k->mod)) continue;
+        switch ((Action)i) {
+        case ACT_PORTAL_VIDEO: app_go(a, SCREEN_VIDEO); return true;
+        case ACT_PORTAL_MUSIC: app_go(a, SCREEN_MUSIC); return true;
+        case ACT_PORTAL_BOOKS: app_go(a, SCREEN_BOOKS); return true;
+        case ACT_SETTINGS: app_go(a, SCREEN_SETTINGS); return true;
+        case ACT_TOGGLE_THEME: toggle_theme(a); return true;
+        case ACT_RESCAN: app_rescan(a); app_toast(a, "Rescanning your library"); return true;
+        case ACT_TEXT_BIGGER: change_text(a, 0.1f); return true;
+        case ACT_TEXT_SMALLER: change_text(a, -0.1f); return true;
+        case ACT_FULLSCREEN: {
+            bool fs = (SDL_GetWindowFlags(a->win) & SDL_WINDOW_FULLSCREEN) != 0;
+            SDL_SetWindowFullscreen(a->win, !fs);
+            return true;
+        }
+        default:
+            if (music_hotkey(a, (Action)i)) return true;
+            break;
+        }
+    }
+    return false;
+}
+
+static void go_back(App *a)
+{
+    switch (a->screen) {
+    case SCREEN_VIDEO: nav_pop(a, &a->vnav); break;
+    case SCREEN_MUSIC: nav_pop(a, &a->mnav); break;
+    case SCREEN_BOOKS: nav_pop(a, &a->bnav); break;
+    case SCREEN_SETTINGS: app_go(a, a->last_portal ? a->last_portal : SCREEN_VIDEO); break;
+    default: break;
+    }
+}
+
+/* ------------------------------------------------------------------------ */
+
+static void debug_script(App *a, Uint64 frame_no);
+
+static void frame(App *a)
+{
+    Ui *ui = &a->ui;
+    ui->th = theme_make(portal_of(a->screen), a->dark, a->set.high_contrast, a->set.accent);
+    ui_begin(ui);
+    art_frame(a);
+    SDL_SetRenderDrawColor(a->ren, ui->th.bg.r, ui->th.bg.g, ui->th.bg.b, 255);
+    SDL_RenderClear(a->ren);
+    chrome_background(a);
+
+    if (a->screen == SCREEN_SETUP) {
+        screen_setup(a);
+    } else {
+        float top = dp(ui, TOPBAR_DP);
+        float bottom = music_bar_height(a);
+        SDL_FRect area = { 0, top, (float)ui->w, ui->h - top - bottom };
+        switch (a->screen) {
+        case SCREEN_VIDEO: portal_video(a, area); break;
+        case SCREEN_MUSIC: portal_music(a, area); break;
+        case SCREEN_BOOKS: portal_books(a, area); break;
+        case SCREEN_SETTINGS: screen_settings(a, area); break;
+        default: break;
+        }
+        chrome_topbar(a);
+        music_bar(a);
+        video_pill(a);
+    }
+    chrome_toast(a);
+    ui_end(ui);
+    debug_script(a, ui->frame);
+    SDL_RenderPresent(a->ren);
+
+    if (ui->text_active && !SDL_TextInputActive(a->win)) SDL_StartTextInput(a->win);
+    else if (!ui->text_active && SDL_TextInputActive(a->win)) SDL_StopTextInput(a->win);
+}
+
+/* Developer aid: THC_KEYS="Down,Down,Return" types keys after start-up and
+ * THC_SCREENSHOT=out.bmp saves the window once they are done, then quits.
+ * Used to check the UI in CI-like headless runs. */
+static void debug_script(App *a, Uint64 frame_no)
+{
+    static const char *keys;
+    static const char *shot;
+    static bool init;
+    static Uint64 next = 20;
+    static bool pending_click;
+    static float click_x, click_y;
+    if (!init) {
+        init = true;
+        keys = SDL_getenv("THC_KEYS");
+        shot = SDL_getenv("THC_SCREENSHOT");
+    }
+    if (!keys && !shot) return;
+    a->ui.needs_redraw = true;
+    if (frame_no < next) return;
+    if (pending_click) {
+        SDL_Event ev;
+        SDL_zero(ev);
+        pending_click = false;
+        ev.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+        ev.button.button = SDL_BUTTON_LEFT;
+        ev.button.x = click_x;
+        ev.button.y = click_y;
+        ev.button.down = true;
+        SDL_PushEvent(&ev);
+        ev.type = SDL_EVENT_MOUSE_BUTTON_UP;
+        ev.button.down = false;
+        SDL_PushEvent(&ev);
+        next = frame_no + 8;
+        return;
+    }
+    if (keys && *keys) {
+        char name[32];
+        size_t n = strcspn(keys, ",");
+        SDL_strlcpy(name, keys, SDL_min(n + 1, sizeof name));
+        keys += n + (keys[n] == ',');
+        SDL_Event ev;
+        SDL_zero(ev);
+        if (!SDL_strncmp(name, "wait", 4)) {
+            next = frame_no + 60;
+            return;
+        }
+        if (!SDL_strncmp(name, "click:", 6)) {
+            float x = 0, y = 0;
+            SDL_sscanf(name + 6, "%f:%f", &x, &y);
+            ev.type = SDL_EVENT_MOUSE_MOTION;
+            ev.motion.x = x;
+            ev.motion.y = y;
+            SDL_PushEvent(&ev);
+            next = frame_no + 4;
+            pending_click = true;
+            click_x = x;
+            click_y = y;
+            return;
+        }
+        if (0) {
+            float x = 0, y = 0;
+            ev.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+            ev.button.button = SDL_BUTTON_LEFT;
+            ev.button.x = x;
+            ev.button.y = y;
+            ev.button.down = true;
+            SDL_PushEvent(&ev);
+            ev.type = SDL_EVENT_MOUSE_BUTTON_UP;
+            ev.button.down = false;
+            SDL_PushEvent(&ev);
+        } else {
+            SDL_Keymod mod = 0;
+            const char *k = name;
+            if (!SDL_strncmp(k, "Shift+", 6)) { mod = SDL_KMOD_LSHIFT; k += 6; }
+            if (!SDL_strncmp(k, "Ctrl+", 5)) { mod = SDL_KMOD_LCTRL; k += 5; }
+            ev.type = SDL_EVENT_KEY_DOWN;
+            ev.key.key = SDL_GetKeyFromName(k);
+            ev.key.mod = mod;
+            ev.key.down = true;
+            SDL_PushEvent(&ev);
+        }
+        next = frame_no + 8;
+        return;
+    }
+    if (shot) {
+        SDL_Surface *s = SDL_RenderReadPixels(a->ren, NULL);
+        if (s) {
+            SDL_SaveBMP(s, shot);
+            SDL_DestroySurface(s);
+        }
+    }
+    a->running = false;
+}
+
+static void handle_event(App *a, SDL_Event *ev)
+{
+    Ui *ui = &a->ui;
+    if (ev->type == SDL_EVENT_QUIT) {
+        a->running = false;
+        return;
+    }
+    if (ev->type == SDL_EVENT_SYSTEM_THEME_CHANGED) {
+        app_apply_appearance(a);
+        return;
+    }
+    bool used = ui_event(ui, ev);
+    if (ev->type == SDL_EVENT_KEY_DOWN && !used) {
+        SDL_Keycode k = ev->key.key;
+        if (ui->text_active) {
+            if (k == SDLK_ESCAPE) ui->focus = 0;
+            return;
+        }
+        if (a->screen == SCREEN_SETTINGS && settings_capture_key(a, &ev->key)) return;
+        if (k == SDLK_ESCAPE || k == SDLK_BACKSPACE || k == SDLK_AC_BACK) {
+            go_back(a);
+            return;
+        }
+        if (a->screen != SCREEN_SETUP) handle_hotkey(a, &ev->key);
+    }
+    if (ui->key_back) {
+        ui->key_back = false;
+        go_back(a);
+    }
 }
 
 int main(int argc, char **argv)
 {
-    App a;
-    SDL_zero(a);
-    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
+    (void)argc;
+    (void)argv;
+    static App app;
+    App *a = &app;
+    SDL_SetAppMetadata("THC", THC_VERSION, "org.thc.player");
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_AUDIO)) {
         SDL_Log("SDL_Init: %s", SDL_GetError());
         return 1;
     }
+
+    /* Data lives in the OS standard data directory. */
     char *pref = SDL_GetPrefPath("THC", "THC");
-    SDL_strlcpy(a.data_dir, pref ? pref : "./", sizeof a.data_dir);
+    SDL_strlcpy(a->data_dir, pref ? pref : "./", sizeof a->data_dir);
     SDL_free(pref);
-    SDL_snprintf(a.mpv_dir, sizeof a.mpv_dir, "%smpv", a.data_dir);
-    SDL_CreateDirectory(a.mpv_dir);
+    SDL_snprintf(a->mpv_dir, sizeof a->mpv_dir, "%smpv", a->data_dir);
+    SDL_CreateDirectory(a->mpv_dir);
+    SDL_snprintf(a->settings_path, sizeof a->settings_path, "%ssettings.ini", a->data_dir);
+    settings_defaults(&a->set);
+    settings_load(&a->set, a->settings_path);
 
-    char db_path[1100], err[256];
-    SDL_snprintf(db_path, sizeof db_path, "%shistory.db", a.data_dir);
-    a.history = history_open(db_path, err, sizeof err);
-    if (!a.history) SDL_Log("history database: %s", err);
+    char db[THC_PATH_MAX + 16], err[256];
+    SDL_snprintf(db, sizeof db, "%shistory.db", a->data_dir);
+    a->hist = history_open(db, err, sizeof err);
+    if (!a->hist) SDL_Log("history database: %s", err);
 
-    a.have_mpv = mpv_dyn_load(&a.mpv, NULL);
-    a.mpv_event = SDL_RegisterEvents(1);
-    SDL_snprintf(a.status, sizeof a.status,
-                 a.have_mpv ? "Drop a video file here" : "libmpv was not found");
+    a->have_mpv = mpv_dyn_load(&a->mpv, a->set.libmpv_path);
+    if (!a->have_mpv) SDL_Log("libmpv not found: video playback is disabled");
+    a->mpv_event = SDL_RegisterEvents(1);
+    a->dlg_mutex = SDL_CreateMutex();
 
-    if (!SDL_CreateWindowAndRenderer("THC", 960, 600, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY,
-                                     &a.win, &a.ren)) {
+    a->win = SDL_CreateWindow("THC", 1280, 800, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY);
+    if (!a->win) {
         SDL_Log("window: %s", SDL_GetError());
         return 1;
     }
-    SDL_SetRenderVSync(a.ren, 1);
-    if (argc > 1) play(&a, argv[1]);
-
-    bool running = true;
-    while (running) {
-        SDL_Event ev;
-        if (SDL_WaitEventTimeout(&ev, 250)) {
-            do {
-                if (ev.type == SDL_EVENT_QUIT) running = false;
-                else if (ev.type == SDL_EVENT_DROP_FILE) play(&a, ev.drop.data);
-            } while (SDL_PollEvent(&ev));
-        }
-        int vf = video_pump(&a.video);
-        if (vf & (VIDEO_EV_PROGRESS | VIDEO_EV_PAUSED | VIDEO_EV_ENDED)) save_progress(&a);
-        if (vf & VIDEO_EV_ENDED) {
-            SDL_snprintf(a.status, sizeof a.status, "Finished at %.1f of %.1f s", a.video.pos,
-                         a.video.duration);
-            SDL_Log("%s", a.status);
-        }
-
-        SDL_SetRenderDrawColor(a.ren, 18, 18, 24, 255);
-        SDL_RenderClear(a.ren);
-        SDL_SetRenderDrawColor(a.ren, 240, 240, 240, 255);
-        SDL_RenderDebugText(a.ren, 24, 24, "THC " THC_VERSION);
-        SDL_RenderDebugText(a.ren, 24, 48, a.status);
-        if (a.video.active) {
-            char buf[128];
-            SDL_snprintf(buf, sizeof buf, "%.1f / %.1f s %s", a.video.pos, a.video.duration,
-                         a.video.paused ? "(paused)" : "");
-            SDL_RenderDebugText(a.ren, 24, 72, buf);
-        }
-        if (a.have_last) {
-            /* Playback bar and checkmark for the last file. */
-            float w = 360, x = 24, y = 104;
-            double f = history_progress(&a.last);
-            SDL_FRect bg = { x, y, w, 6 }, fg = { x, y, (float)(w * f), 6 };
-            SDL_SetRenderDrawColor(a.ren, 60, 60, 72, 255);
-            SDL_RenderFillRect(a.ren, &bg);
-            SDL_SetRenderDrawColor(a.ren, 255, 140, 66, 255);
-            SDL_RenderFillRect(a.ren, &fg);
-            if (a.last.watched) {
-                SDL_SetRenderDrawColor(a.ren, 80, 220, 120, 255);
-                for (int t = 0; t < 3; t++) {
-                    SDL_RenderLine(a.ren, x + w + 12, y + 2 + t, x + w + 17, y + 7 + t);
-                    SDL_RenderLine(a.ren, x + w + 17, y + 7 + t, x + w + 27, y - 4 + t);
-                }
-            }
-        }
-        SDL_RenderPresent(a.ren);
+    SDL_SetWindowMinimumSize(a->win, 640, 480);
+    a->ren = SDL_CreateRenderer(a->win, NULL);
+    if (!a->ren) {
+        SDL_Log("renderer: %s", SDL_GetError());
+        return 1;
     }
-    if (a.video.h) save_progress(&a);
-    video_stop(&a.video);
-    history_close(a.history);
-    mpv_dyn_unload(&a.mpv);
+    SDL_SetRenderVSync(a->ren, 1);
+    if (!ui_init(&a->ui, a->win, a->ren, a->set.font_path)) {
+        SDL_Log("ui init failed");
+        return 1;
+    }
+    app_apply_appearance(a);
+    music_init(a);
+
+    if (!a->set.setup_done) {
+        a->screen = SCREEN_SETUP;
+    } else {
+        a->screen = (Screen)(SCREEN_VIDEO + a->set.last_portal);
+        a->last_portal = a->screen;
+        app_rescan(a);
+    }
+
+    a->running = true;
+    while (a->running) {
+        SDL_Event ev;
+        bool busy = a->ui.needs_redraw || a->video.active || a->scanning || a->toast[0] || music_busy(a);
+        if (!busy) {
+            if (SDL_WaitEventTimeout(&ev, 1000)) handle_event(a, &ev);
+        }
+        while (SDL_PollEvent(&ev)) handle_event(a, &ev);
+        poll_dialog(a);
+        if (scan_poll(a)) app_history_changed();
+        pump_video(a);
+        music_pump(a);
+        frame(a);
+    }
+
+    if (a->video.h) {
+        save_video_progress(a);
+        video_stop(&a->video);
+    }
+    music_shutdown(a);
+    app_save_settings(a);
+    if (a->scan_thread) SDL_WaitThread(a->scan_thread, NULL);
+    library_free(&a->lib);
+    history_close(a->hist);
+    art_clear();
+    ui_shutdown(&a->ui);
+    mpv_dyn_unload(&a->mpv);
+    SDL_DestroyRenderer(a->ren);
+    SDL_DestroyWindow(a->win);
+    SDL_DestroyMutex(a->dlg_mutex);
     SDL_Quit();
-    (void)argv;
     return 0;
 }
