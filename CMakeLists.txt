@@ -70,6 +70,7 @@ endfunction()
 add_library(thc_core STATIC
   src/fstree.c
   src/history.c
+  src/library.c
   src/settings.c)
 target_include_directories(thc_core PUBLIC include)
 target_link_libraries(thc_core PUBLIC SQLite::SQLite3)

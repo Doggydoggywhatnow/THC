@@ -816,10 +816,11 @@ UiItemState ui_item(Ui *ui, Uint32 id, SDL_FRect r)
             UiRegion *g = ui->rstack[i];
             /* vertical pages keep room for the labels under a focused card */
             float margin = dp(ui, g->horizontal ? 24 : 72);
-            float lo = g->horizontal ? r.x - g->rect.x : r.y - g->rect.y;
+            /* position in content coordinates (independent of animation) */
+            float pos = (g->horizontal ? r.x - g->rect.x : r.y - g->rect.y) + SDL_floorf(g->off);
             float len = g->horizontal ? r.w : r.h;
-            if (lo - margin < 0) g->target += lo - margin;
-            else if (lo + len + margin > g->view) g->target += lo + len + margin - g->view;
+            if (pos - g->target < margin) g->target = pos - margin;
+            else if (pos + len - g->target > g->view - margin) g->target = pos + len + margin - g->view;
             if (g->target < 0) g->target = 0;
         }
     }

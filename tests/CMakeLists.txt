@@ -8,3 +8,7 @@ add_test(NAME history COMMAND test_history WORKING_DIRECTORY ${CMAKE_CURRENT_BIN
 add_executable(test_settings test_settings.c)
 target_link_libraries(test_settings PRIVATE thc_core)
 add_test(NAME settings COMMAND test_settings WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
+add_executable(test_parser test_parser.c)
+target_link_libraries(test_parser PRIVATE thc_core)
+add_test(NAME parser COMMAND test_parser)

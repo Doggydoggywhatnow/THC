@@ -121,6 +121,17 @@ void app_rescan(App *a)
     scan_start(a);
 }
 
+void app_rebuild_library(App *a)
+{
+    LibraryRoot roots[1 + SECTION_COUNT];
+    int n = 0;
+    roots[n++] = (LibraryRoot){ a->lib.root[ROOT_VIDEO], ROOT_VIDEO, -1 };
+    for (int i = 0; i < SECTION_COUNT; i++)
+        roots[n++] = (LibraryRoot){ a->lib.root[ROOT_SECTION0 + i], ROOT_SECTION0 + i, i };
+    library_clear(&a->vlib);
+    library_build(&a->vlib, roots, n, &a->set);
+}
+
 /* ------------------------------------------------------------------------ */
 /* Folder picker                                                              */
 /* ------------------------------------------------------------------------ */
@@ -299,6 +310,17 @@ static bool handle_hotkey(App *a, const SDL_KeyboardEvent *k)
         case ACT_RESCAN: app_rescan(a); app_toast(a, "Rescanning your library"); return true;
         case ACT_TEXT_BIGGER: change_text(a, 0.1f); return true;
         case ACT_TEXT_SMALLER: change_text(a, -0.1f); return true;
+        case ACT_TOGGLE_WATCHED: {
+            const FsNode *f = a->focus_file;
+            if (!f || f->dir || f->kind != MK_VIDEO) return false;
+            HistoryEntry e;
+            bool w = app_history(a, f, &e) && e.watched;
+            char rel[THC_PATH_MAX];
+            history_set_watched(a->hist, fs_relpath(f, rel, sizeof rel), f->size, !w);
+            app_history_changed();
+            app_toast(a, w ? "Marked as not watched" : "Marked as watched");
+            return true;
+        }
         case ACT_FULLSCREEN: {
             bool fs = (SDL_GetWindowFlags(a->win) & SDL_WINDOW_FULLSCREEN) != 0;
             SDL_SetWindowFullscreen(a->win, !fs);
@@ -332,6 +354,7 @@ static void frame(App *a)
     Ui *ui = &a->ui;
     ui->th = theme_make(portal_of(a->screen), a->dark, a->set.high_contrast, a->set.accent);
     ui_begin(ui);
+    a->focus_file = NULL;
     art_frame(a);
     SDL_SetRenderDrawColor(a->ren, ui->th.bg.r, ui->th.bg.g, ui->th.bg.b, 255);
     SDL_RenderClear(a->ren);
@@ -556,7 +579,11 @@ int main(int argc, char **argv)
         }
         while (SDL_PollEvent(&ev)) handle_event(a, &ev);
         poll_dialog(a);
-        if (scan_poll(a)) app_history_changed();
+        if (scan_poll(a)) {
+            a->focus_file = NULL;
+            app_rebuild_library(a);
+            app_history_changed();
+        }
         pump_video(a);
         music_pump(a);
         frame(a);
@@ -569,6 +596,7 @@ int main(int argc, char **argv)
     music_shutdown(a);
     app_save_settings(a);
     if (a->scan_thread) SDL_WaitThread(a->scan_thread, NULL);
+    library_clear(&a->vlib);
     library_free(&a->lib);
     history_close(a->hist);
     art_clear();

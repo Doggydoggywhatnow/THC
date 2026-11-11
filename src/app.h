@@ -6,6 +6,7 @@
 
 #include "fstree.h"
 #include "history.h"
+#include "library.h"
 #include "mpv_dyn.h"
 #include "settings.h"
 #include "ui.h"
@@ -31,6 +32,8 @@ typedef struct Library {
 #define NAV_DEPTH 16
 typedef struct PortalNav {
     int depth;
+    int kind[NAV_DEPTH];           /* portal-specific page kind */
+    int arg[NAV_DEPTH];            /* e.g. section index, season tab */
     int root[NAV_DEPTH];
     char rel[NAV_DEPTH][THC_PATH_MAX];
     Uint32 focus[NAV_DEPTH];       /* focus to restore when going back */
@@ -66,6 +69,11 @@ typedef struct App {
     Library *scan_result;
     bool scanning;
     Uint64 lib_version;            /* bumps on every new scan */
+    VideoLibrary vlib;             /* shows and movies parsed from the scan */
+
+    /* the media item under focus or the mouse (for the "toggle watched" key) */
+    const FsNode *focus_file;
+    int focus_root;
 
     /* screens */
     Screen screen;
@@ -129,6 +137,8 @@ void chrome_topbar(App *a);
 void chrome_toast(App *a);
 /* A poster/cover card. Draws art or a generated gradient. */
 void draw_cover(App *a, SDL_FRect r, const char *title, const char *art_path, float radius, UiIcon icon);
+/* Art or a generated gradient, without text. */
+void draw_art(App *a, SDL_FRect r, const char *seed, const char *art_path, float radius);
 /* Section title with an optional "N items" note. */
 void draw_heading(App *a, float x, float y, const char *title, const char *note);
 /* Empty-state panel. */
@@ -146,6 +156,8 @@ void screen_settings(App *a, SDL_FRect area);
 /* portal navigation helpers */
 void nav_reset(PortalNav *n);
 void nav_push(App *a, PortalNav *n, int root, const char *rel);
+void nav_push_kind(App *a, PortalNav *n, int kind, int arg, int root, const char *rel);
+void app_rebuild_library(App *a);
 bool nav_pop(App *a, PortalNav *n);
 FsNode *nav_node(App *a, const PortalNav *n);
 

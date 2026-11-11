@@ -102,6 +102,26 @@ void chrome_toast(App *a)
     ui->needs_redraw = true;
 }
 
+void draw_art(App *a, SDL_FRect r, const char *seed, const char *art_path, float radius)
+{
+    Ui *ui = &a->ui;
+    if (!ui_visible(ui, r)) return;
+    SDL_Texture *tex = art_path ? art_get(a, art_path) : NULL;
+    if (tex) {
+        ui_image(ui, tex, r, radius, 255);
+        return;
+    }
+    Color c1, c2;
+    art_colors(seed, &c1, &c2);
+    if (ui->th.high_contrast) {
+        ui_fill(ui, r, ui->th.surface, radius);
+        ui_stroke(ui, r, ui->th.border, radius, dp(ui, 2));
+        return;
+    }
+    ui_fill_grad_h(ui, r, c2, c1, radius);
+    ui_fill_grad(ui, r, rgba(0xFFFFFF, 30), rgba(0x000000, 40), radius);
+}
+
 void draw_cover(App *a, SDL_FRect r, const char *title, const char *art_path, float radius, UiIcon icon)
 {
     Ui *ui = &a->ui;
@@ -202,9 +222,16 @@ void nav_reset(PortalNav *n)
 
 void nav_push(App *a, PortalNav *n, int root, const char *rel)
 {
+    nav_push_kind(a, n, 0, 0, root, rel);
+}
+
+void nav_push_kind(App *a, PortalNav *n, int kind, int arg, int root, const char *rel)
+{
     if (n->depth >= NAV_DEPTH - 1) return;
     n->focus[n->depth] = a->ui.focus;
     n->depth++;
+    n->kind[n->depth] = kind;
+    n->arg[n->depth] = arg;
     n->root[n->depth] = root;
     SDL_strlcpy(n->rel[n->depth], rel, THC_PATH_MAX);
     n->focus[n->depth] = 0;
