@@ -234,7 +234,7 @@ Want THC to start from your existing MPV setup? Copy your config files into THC'
 
 ## Downloads
 
-Linux packages for **v0.1.0** are on the [v0.1.0 release page](https://github.com/Doggydoggywhatnow/THC/releases/tag/v0.1.0). All are x86-64.
+Linux packages for **v0.1.0** are built automatically on every push to `dev`. To download them, open the latest successful [Linux packages run](https://github.com/Doggydoggywhatnow/THC/actions/workflows/packages.yml?query=branch%3Adev+is%3Asuccess) and pick a file under **Artifacts** (`deb-appimage`, `alpine`, `void`, `snap`; each downloads as a .zip). You need to be signed in to GitHub, and files are kept for 90 days. All are x86-64.
 
 | Distribution | File | Install |
 | --- | --- | --- |
