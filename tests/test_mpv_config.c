@@ -88,6 +88,17 @@ static void check_profile(VideoSession *s)
     CHECK_NEAR(num(s, "volume"), 44);                 /* a [profile] section + profile= works */
 }
 
+static void check_script(VideoSession *s)
+{
+    /* scripts/ in THC's config folder run (libmpv does not autoload them by itself) */
+    double v = -1;
+    for (int i = 0; i < 40 && v != 23; i++) {
+        SDL_Delay(50);
+        v = num(s, "volume");
+    }
+    CHECK_NEAR(v, 23);
+}
+
 int main(void)
 {
     memset(&api, 0, sizeof api);
@@ -124,6 +135,14 @@ int main(void)
     /* 4. profiles work */
     write_file("mpvcfg_thc/mpv.conf", "ao=null\nprofile=quiet\n[quiet]\nvolume=44\n");
     session("mpvcfg_thc", check_profile);
+
+    /* 5. scripts work */
+    SDL_CreateDirectory("mpvcfg_thc/scripts");
+    write_file("mpvcfg_thc/mpv.conf", "ao=null\n");
+    write_file("mpvcfg_thc/scripts/set_volume.lua", "mp.set_property('volume', '23')\n");
+    session("mpvcfg_thc", check_script);
+    SDL_RemovePath("mpvcfg_thc/scripts/set_volume.lua");
+    SDL_RemovePath("mpvcfg_thc/scripts");
 
     SDL_RemovePath("mpvcfg_thc/mpv.conf");
     SDL_RemovePath("mpvcfg_thc/input.conf");

@@ -17,6 +17,38 @@ static void wakeup(void *ud)
     SDL_PushEvent(&ev);
 }
 
+/* libmpv does not autoload the scripts/ folder of the config directory the way
+ * the mpv player does, so THC loads them itself (.lua, .js, .so/.dll, and
+ * folders with a main.lua or main.js). */
+typedef struct ScriptCtx { const MpvApi *api; mpv_handle *h; } ScriptCtx;
+
+static SDL_EnumerationResult SDLCALL load_script_cb(void *ud, const char *dirname, const char *fname)
+{
+    ScriptCtx *c = ud;
+    if (fname[0] == '.') return SDL_ENUM_CONTINUE;
+    char path[1200];
+    SDL_snprintf(path, sizeof path, "%s%s", dirname, fname);
+    SDL_PathInfo info;
+    if (!SDL_GetPathInfo(path, &info)) return SDL_ENUM_CONTINUE;
+    const char *dot = SDL_strrchr(fname, '.');
+    bool ok = info.type == SDL_PATHTYPE_DIRECTORY ||
+              (dot && (!SDL_strcasecmp(dot, ".lua") || !SDL_strcasecmp(dot, ".js") ||
+                       !SDL_strcasecmp(dot, ".so") || !SDL_strcasecmp(dot, ".dll")));
+    if (!ok) return SDL_ENUM_CONTINUE;
+    const char *cmd[] = { "load-script", path, NULL };
+    c->api->command(c->h, cmd);
+    if (SDL_getenv("THC_MPV_LOG")) SDL_Log("THC: loading script %s", path);
+    return SDL_ENUM_CONTINUE;
+}
+
+static void load_user_scripts(const MpvApi *api, mpv_handle *h, const char *config_dir)
+{
+    char dir[1100];
+    SDL_snprintf(dir, sizeof dir, "%s/scripts", config_dir);
+    ScriptCtx c = { api, h };
+    SDL_EnumerateDirectory(dir, load_script_cb, &c);
+}
+
 bool video_play(VideoSession *s, const MpvApi *api, const char *path, const VideoOptions *opt)
 {
     memset(s, 0, sizeof *s);
@@ -87,6 +119,7 @@ bool video_play(VideoSession *s, const MpvApi *api, const char *path, const Vide
         char sb[64];
         SDL_snprintf(sb, sizeof sb, "%.3f", opt->start > 1.0 ? opt->start : 0.0);
         api->set_property_string(s->h, "start", sb);
+        load_user_scripts(api, s->h, opt->config_dir);
     }
     if (err < 0) {
         SDL_snprintf(s->error, sizeof s->error, "mpv_initialize: %s", api->error_string(err));
