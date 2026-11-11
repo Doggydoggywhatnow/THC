@@ -5,6 +5,10 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+concurrency:
+  group: packages-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   deb-appimage:
     runs-on: ubuntu-22.04   # older glibc: the AppImage runs on more systems
@@ -74,6 +78,7 @@ jobs:
 
   snap:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
       - uses: snapcore/action-build@v1
@@ -87,7 +92,7 @@ jobs:
     # to them directly (no GitHub login needed). Pushes by GITHUB_TOKEN do
     # not start new workflow runs.
     if: always() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request'
-    needs: [deb-appimage, alpine, void, snap]
+    needs: [deb-appimage, alpine, void]
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
@@ -103,10 +108,28 @@ jobs:
                    dist/thc-0.1.0-r0-alpine-x86_64.apk; do
             [ -f "$f" ] && cp "$f" downloads/
           done
-          [ -f dist/*.snap ] && cp dist/*.snap downloads/thc_0.1.0_amd64.snap || true
           git config user.name "github-actions"
           git config user.email "actions@users.noreply.github.com"
           git add downloads
           git diff --cached --quiet || git commit -m "Update packages [skip ci]"
           git pull --rebase origin dev
           git push origin dev
+
+  publish-snap:
+    if: always() && needs.snap.result == 'success' && github.ref == 'refs/heads/dev'
+    needs: [snap]
+    runs-on: ubuntu-latest
+    permissions: { contents: write }
+    steps:
+      - uses: actions/checkout@v5
+        with: { ref: dev }
+      - uses: actions/download-artifact@v4
+        with: { path: dist, merge-multiple: true }
+      - run: |
+          mkdir -p downloads
+          cp dist/*.snap downloads/thc_0.1.0_amd64.snap
+          git config user.name "github-actions"
+          git config user.email "actions@users.noreply.github.com"
+          git add downloads
+          git diff --cached --quiet || git commit -m "Update snap [skip ci]"
+          for i in 1 2 3; do git pull --rebase origin dev && git push origin dev && break; sleep 5; done
