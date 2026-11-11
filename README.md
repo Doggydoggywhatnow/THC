@@ -155,7 +155,7 @@ THC embeds MPV through **libmpv**, so it can track your viewing without taking a
 1. **Resume:** when you play a file, THC looks up its saved position and starts MPV there using MPV's `start` option.
 2. **Observe:** while the file plays, THC watches MPV's own properties (`time-pos`, `duration`, `pause`, and `eof-reached`) and listens for MPV's playback events (such as end-of-file).
 3. **Save:** THC writes your position to its local SQLite database periodically, and also on pause, on stop, and when you quit, so a crash loses at most a few seconds.
-4. **Mark as watched:** when you reach the end of a file (or pass a watched threshold), THC records it as watched and shows the checkmark. The threshold will be configurable. *(planned)*
+4. **Mark as watched:** once you pass the **watched threshold** (by default, 90% of the file), THC records the file as watched and shows the checkmark. That way skipping the credits still counts. The threshold is configurable.
 
 THC only reads these properties. It doesn't change playback, and it never writes into your media files.
 
