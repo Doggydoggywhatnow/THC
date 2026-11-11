@@ -23,6 +23,7 @@ THC is a graphical interface for your local media, written in C. It shows what's
 - [How it works](#how-it-works)
 - [Interface design](#interface-design)
 - [Watch tracking and MPV configuration](#watch-tracking-and-mpv-configuration)
+- [Downloads](#downloads)
 - [Building from source](#building-from-source)
 - [Usage](#usage)
 - [Configuration](#configuration)
@@ -230,6 +231,23 @@ THC has its **own MPV configuration directory**, used only by THC. THC points li
 - You can keep MPV installed on its own with one setup, and run THC with a completely different one.
 
 Want THC to start from your existing MPV setup? Copy your config files into THC's MPV configuration directory. The two stay independent afterward.
+
+## Downloads
+
+Linux packages for **v0.1.0** are on the [v0.1.0 release page](https://github.com/Doggydoggywhatnow/THC/releases/tag/v0.1.0). All are x86-64.
+
+| Distribution | File | Install |
+| --- | --- | --- |
+| Debian, Ubuntu, Mint | `thc_0.1.0_amd64.deb` | `sudo apt install ./thc_0.1.0_amd64.deb` |
+| Any distribution (AppImage) | `THC-0.1.0-x86_64.AppImage` | `chmod +x THC-*.AppImage && ./THC-*.AppImage` |
+| Alpine Linux | `thc-0.1.0-r0-alpine-x86_64.apk` | `sudo apk add --allow-untrusted ./thc-0.1.0-r0-alpine-x86_64.apk` |
+| Void Linux | `thc-0.1.0_1.x86_64.xbps` | `xbps-rindex -a thc-*.xbps && sudo xbps-install -R $PWD thc` |
+| Snap | `thc_0.1.0_amd64.snap` | `sudo snap install --dangerous ./thc_0.1.0_amd64.snap` |
+| Other (tarball) | `thc-0.1.0-linux-x86_64.tar.gz` | unpack into `/usr` or `~/.local` |
+
+Video playback needs MPV's library (libmpv) on your system: `libmpv2` on Debian/Ubuntu, `mpv-libs` on Alpine, `mpv` on Void. The .deb, .apk, .xbps and snap pull it in; the AppImage and tarball use whatever is installed. Music works without it.
+
+Packages are built by `.github/workflows/packages.yml`; the recipes live in `packaging/` (AppImage script, Alpine `APKBUILD`, Void `template`) and `snap/snapcraft.yaml`. The snap includes Ubuntu's libmpv, which is GPL-licensed. Windows and macOS packages are planned.
 
 ## Building from source
 

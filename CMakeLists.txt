@@ -184,3 +184,28 @@ endif()
 
 enable_testing()
 add_subdirectory(tests)
+
+# ---------------------------------------------------------------------------
+# Install and Linux packages (cpack -G DEB / TGZ)
+# ---------------------------------------------------------------------------
+if(THC_BUILD_APP AND UNIX AND NOT APPLE)
+  include(GNUInstallDirs)
+  install(TARGETS thc RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  install(FILES packaging/linux/thc.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+  install(FILES packaging/linux/thc.png DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/512x512/apps)
+  install(FILES packaging/linux/io.github.doggydoggywhatnow.thc.metainfo.xml DESTINATION ${CMAKE_INSTALL_DATADIR}/metainfo)
+  install(FILES LICENSE README.md DESTINATION ${CMAKE_INSTALL_DOCDIR})
+
+  set(CPACK_PACKAGE_NAME thc)
+  set(CPACK_PACKAGE_VENDOR "THC")
+  set(CPACK_PACKAGE_CONTACT "THC <https://github.com/Doggydoggywhatnow/THC>")
+  set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Lightweight player for the music and videos you already have")
+  set(CPACK_PACKAGE_FILE_NAME "thc-${PROJECT_VERSION}-linux-x86_64")
+  set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+  set(CPACK_DEBIAN_PACKAGE_SECTION video)
+  set(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6, libsqlite3-0")
+  set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "libmpv2 | libmpv1")
+  set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "https://github.com/Doggydoggywhatnow/THC")
+  set(CPACK_GENERATOR "DEB;TGZ")
+  include(CPack)
+endif()

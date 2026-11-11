@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=THC
+GenericName=Media Player
+Comment=Browse and play the music and videos you already have
+Exec=thc
+Icon=thc
+Terminal=false
+Categories=AudioVideo;Audio;Video;Player;
+Keywords=video;music;audiobook;mpv;library;
