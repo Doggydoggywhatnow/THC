@@ -17,6 +17,120 @@ void thumb_key(int64_t size, int64_t mtime, char out[17])
     snprintf(out, 17, "%016llx", (unsigned long long)h);
 }
 
+#define KEY_BLOCK 4096
+
+static uint64_t fnv_bytes(uint64_t h, const unsigned char *p, size_t n)
+{
+    for (size_t i = 0; i < n; i++) {
+        h ^= p[i];
+        h *= 1099511628211ull;
+    }
+    return h;
+}
+
+static int g_reads;
+
+void thumb_key_for_file(const char *path, int64_t size, int64_t mtime, char out[17])
+{
+    FILE *f = path ? fopen(path, "rb") : NULL;
+    if (!f) {
+        thumb_key(size, mtime, out);       /* unreadable: the old key, no crash */
+        return;
+    }
+    g_reads++;
+    unsigned char head[KEY_BLOCK], tail[KEY_BLOCK];
+    size_t nh = fread(head, 1, sizeof head, f), nt = 0;
+    if (size > (int64_t)KEY_BLOCK && fseek(f, -(long)KEY_BLOCK, SEEK_END) == 0) nt = fread(tail, 1, sizeof tail, f);
+    fclose(f);
+    char base[17];
+    thumb_key(size, mtime, base);
+    uint64_t h = 1469598103934665603ull;
+    h = fnv_bytes(h, (const unsigned char *)base, 16);
+    h = fnv_bytes(h, head, nh);
+    h = fnv_bytes(h, tail, nt);
+    snprintf(out, 17, "%016llx", (unsigned long long)h);
+}
+
+typedef struct KeyEntry { char *path; int64_t size, mtime; char key[17]; } KeyEntry;
+static KeyEntry *g_keys;
+static size_t g_nkeys, g_capkeys;
+static uint32_t *g_slots;           /* open addressing: index + 1, 0 = empty */
+static size_t g_nslots;
+
+static uint32_t hash_str(const char *s)
+{
+    uint32_t h = 2166136261u;
+    for (; *s; s++) { h ^= (unsigned char)*s; h *= 16777619u; }
+    return h;
+}
+
+static void rehash(size_t n)
+{
+    free(g_slots);
+    g_slots = (uint32_t *)calloc(n, sizeof *g_slots);
+    g_nslots = g_slots ? n : 0;
+    for (size_t i = 0; i < g_nkeys && g_nslots; i++) {
+        size_t s = hash_str(g_keys[i].path) & (g_nslots - 1);
+        while (g_slots[s]) s = (s + 1) & (g_nslots - 1);
+        g_slots[s] = (uint32_t)i + 1;
+    }
+}
+
+void thumb_key_cached(const char *path, int64_t size, int64_t mtime, char out[17])
+{
+    if (!path || !g_slots) {
+        if (!g_slots && path) rehash(1024);
+        if (!g_slots) { thumb_key_for_file(path, size, mtime, out); return; }
+    }
+    size_t s = hash_str(path) & (g_nslots - 1);
+    while (g_slots[s]) {
+        KeyEntry *e = &g_keys[g_slots[s] - 1];
+        if (!strcmp(e->path, path)) {
+            if (e->size == size && e->mtime == mtime) { memcpy(out, e->key, 17); return; }
+            thumb_key_for_file(path, size, mtime, e->key);      /* the file changed: key it again */
+            e->size = size;
+            e->mtime = mtime;
+            memcpy(out, e->key, 17);
+            return;
+        }
+        s = (s + 1) & (g_nslots - 1);
+    }
+    thumb_key_for_file(path, size, mtime, out);
+    if (g_nkeys == g_capkeys) {
+        size_t nc = g_capkeys ? g_capkeys * 2 : 1024;
+        KeyEntry *nk = (KeyEntry *)realloc(g_keys, nc * sizeof *nk);
+        if (!nk) return;
+        g_keys = nk;
+        g_capkeys = nc;
+    }
+    if ((g_nkeys + 1) * 2 > g_nslots) {
+        rehash(g_nslots * 2);
+        s = hash_str(path) & (g_nslots - 1);
+        while (g_slots[s]) s = (s + 1) & (g_nslots - 1);
+    }
+    KeyEntry *e = &g_keys[g_nkeys];
+    size_t pl = strlen(path) + 1;
+    e->path = (char *)malloc(pl);
+    if (!e->path) return;
+    memcpy(e->path, path, pl);
+    e->size = size;
+    e->mtime = mtime;
+    memcpy(e->key, out, 17);
+    g_slots[s] = (uint32_t)++g_nkeys;
+}
+
+int thumb_key_reads(void) { return g_reads; }
+
+void thumb_key_cache_clear(void)
+{
+    for (size_t i = 0; i < g_nkeys; i++) free(g_keys[i].path);
+    free(g_keys);
+    free(g_slots);
+    g_keys = NULL;
+    g_slots = NULL;
+    g_nkeys = g_capkeys = g_nslots = 0;
+}
+
 const FsNode *thumb_sidecar(const FsNode *video)
 {
     if (!video || video->dir || !video->parent) return NULL;

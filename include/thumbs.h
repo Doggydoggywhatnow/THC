@@ -14,6 +14,17 @@
  * `out` receives 16 hex digits and a NUL. */
 void thumb_key(int64_t size, int64_t mtime, char out[17]);
 
+/* Cache key from the size, the modification time and the first and last 4 KB of the file (#22):
+ * renames and moves keep it, different files no longer collide (batch-copied files share size and
+ * mtime). Reads the file read-only. If it cannot be read, falls back to thumb_key(). */
+void thumb_key_for_file(const char *path, int64_t size, int64_t mtime, char out[17]);
+/* The same, remembered by path for the session (a changed size or mtime makes a new entry), so the
+ * file is read once and not on every frame. */
+void thumb_key_cached(const char *path, int64_t size, int64_t mtime, char out[17]);
+/* How many times a file was actually read for a key (for tests). */
+int thumb_key_reads(void);
+void thumb_key_cache_clear(void);
+
 /* An image sitting next to a video that acts as its thumbnail: "Name.jpg",
  * "Name-thumb.jpg", "Name-poster.png", "Name-landscape.jpg" or "Name-fanart.jpg".
  * Returns NULL if there is none. */

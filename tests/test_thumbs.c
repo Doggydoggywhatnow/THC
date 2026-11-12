@@ -29,6 +29,77 @@ static void test_keys(void)
     CHECK(strlen(a) == 16);
 }
 
+static void write_blob(const char *path, size_t n, unsigned char fill, unsigned char mid)
+{
+    FILE *f = fopen(path, "wb");
+    if (!f) return;
+    for (size_t i = 0; i < n; i++) fputc(i >= 5000 && i < n - 5000 ? mid : fill, f);
+    fclose(f);
+}
+
+/* #22: files with the same size and mtime but different content must not share a key */
+static void test_content_keys(void)
+{
+    char a[17], b[17], c[17], d[17], e[17];
+    write_blob("tk_a.bin", 20000, 1, 7);
+    write_blob("tk_b.bin", 20000, 2, 7);          /* different head and tail */
+    write_blob("tk_c.bin", 20000, 1, 7);          /* identical to a, another name */
+    thumb_key_for_file("tk_a.bin", 20000, 5000, a);
+    thumb_key_for_file("tk_b.bin", 20000, 5000, b);
+    thumb_key_for_file("tk_c.bin", 20000, 5000, c);
+    CHECK(strcmp(a, b) != 0);                      /* the batch-copy collision */
+    CHECK_STR(a, c);                               /* a rename or move keeps the thumbnail */
+    CHECK(strlen(a) == 16);
+    /* different mtime: a new key */
+    thumb_key_for_file("tk_a.bin", 20000, 5001, d);
+    CHECK(strcmp(a, d) != 0);
+    /* files shorter than 8 KB, and than 4 KB */
+    write_blob("tk_s1.bin", 3000, 1, 1);
+    write_blob("tk_s2.bin", 3000, 9, 9);
+    thumb_key_for_file("tk_s1.bin", 3000, 1, a);
+    thumb_key_for_file("tk_s2.bin", 3000, 1, b);
+    CHECK(strcmp(a, b) != 0);
+    write_blob("tk_s3.bin", 6000, 1, 1);
+    thumb_key_for_file("tk_s3.bin", 6000, 1, a);
+    CHECK(strlen(a) == 16);
+    /* an unreadable file falls back to the old key and does not crash */
+    thumb_key_for_file("no_such_file.bin", 1000, 5000, a);
+    thumb_key(1000, 5000, e);
+    CHECK_STR(a, e);
+    /* the key is computed once per file per session, not once per call */
+    thumb_key_cache_clear();
+    int r0 = thumb_key_reads();
+    for (int i = 0; i < 500; i++) thumb_key_cached("tk_a.bin", 20000, 5000, a);
+    for (int i = 0; i < 500; i++) thumb_key_cached("tk_b.bin", 20000, 5000, b);
+    CHECK(thumb_key_reads() - r0 == 2);
+    CHECK(strcmp(a, b) != 0);
+    thumb_key_for_file("tk_a.bin", 20000, 5000, c);
+    CHECK_STR(a, c);
+    /* a changed mtime makes a new entry (one more read) */
+    thumb_key_cached("tk_a.bin", 20000, 6000, c);
+    CHECK(thumb_key_reads() - r0 >= 3 && strcmp(a, c) != 0);
+    /* many files: the table grows and still answers */
+    int r1 = thumb_key_reads();
+    for (int i = 0; i < 3000; i++) {
+        char p[32];
+        snprintf(p, sizeof p, "missing_%d.bin", i);
+        thumb_key_cached(p, i, i, a);
+    }
+    for (int i = 0; i < 3000; i++) {
+        char p[32];
+        snprintf(p, sizeof p, "missing_%d.bin", i);
+        thumb_key_cached(p, i, i, a);
+    }
+    CHECK(thumb_key_reads() == r1);                /* unreadable files are never "read" */
+    thumb_key_cache_clear();
+    /* reading the key leaves the file untouched */
+    FILE *f = fopen("tk_a.bin", "rb");
+    CHECK(f != NULL);
+    if (f) { fseek(f, 0, SEEK_END); CHECK(ftell(f) == 20000); fclose(f); }
+    remove("tk_a.bin"); remove("tk_b.bin"); remove("tk_c.bin");
+    remove("tk_s1.bin"); remove("tk_s2.bin"); remove("tk_s3.bin");
+}
+
 static void test_sidecar(void)
 {
     FsNode *root = fs_new("lib", true);
@@ -132,6 +203,7 @@ static void test_generate(void)
 int main(void)
 {
     test_keys();
+    test_content_keys();
     test_sidecar();
     test_brightness();
     test_prune();

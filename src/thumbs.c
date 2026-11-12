@@ -212,8 +212,9 @@ bool thumb_get(App *a, int root, const FsNode *file, char *out, size_t cap)
     }
     /* 2. a generated frame */
     if (!a->set.video_thumbs || !a->have_mpv || !start(a)) return false;
-    char key[17];
-    thumb_key(file->size, file->mtime, key);
+    char key[17], full[THC_PATH_MAX];
+    app_full_path(a, root, file, full, sizeof full);
+    thumb_key_cached(full, file->size, file->mtime, key);   /* content-based, read once per session (#22) */
     int idx = 0;
     Entry *e = entry_for(key, &idx);
     if (!e) return false;
