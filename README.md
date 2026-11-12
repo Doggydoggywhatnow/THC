@@ -325,10 +325,11 @@ A few options are fixed by THC so its watch history stays correct, and `mpv.conf
 
 ## Downloads
 
-Linux packages for **v0.3.1** (x86-64) are rebuilt by CI on every push to `dev` and stored in the [`downloads/`](https://github.com/Doggydoggywhatnow/THC/tree/dev/downloads) folder.
+Linux packages and the Windows `.exe` for **v0.3.1** (x86-64) are rebuilt by CI on every push to `dev` and stored in the [`downloads/`](https://github.com/Doggydoggywhatnow/THC/tree/dev/downloads) folder.
 
-| Distribution | Download | Install |
+| System | Download | Install |
 | --- | --- | --- |
+| Windows (x86-64) | [thc-0.3.1-windows-x86_64.exe](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc-0.3.1-windows-x86_64.exe) | one file with SDL3, SQLite and the C runtime built in; run it. For video, put `libmpv-2.dll` next to it |
 | Debian, Ubuntu, Mint | [thc_0.3.1_amd64.deb](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc_0.3.1_amd64.deb) | `sudo apt install ./thc_0.3.1_amd64.deb` |
 | Any distribution (AppImage) | [THC-0.3.1-x86_64.AppImage](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/THC-0.3.1-x86_64.AppImage) | `chmod +x THC-*.AppImage && ./THC-*.AppImage` |
 | Alpine Linux | [thc-0.3.1-r0-alpine-x86_64.apk](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc-0.3.1-r0-alpine-x86_64.apk) | `sudo apk add --allow-untrusted ./thc-0.3.1-r0-alpine-x86_64.apk` |
@@ -343,9 +344,9 @@ Linux packages for **v0.3.1** (x86-64) are rebuilt by CI on every push to `dev` 
 | Windows | [thc-inspect-0.3.1-windows-x86_64.exe](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc-inspect-0.3.1-windows-x86_64.exe) |
 | macOS | [thc-inspect-0.3.1-macos-arm64](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc-inspect-0.3.1-macos-arm64) |
 
-Video playback needs MPV's library (libmpv) on your system: `libmpv2` on Debian/Ubuntu, `mpv-libs` on Alpine, `mpv` on Void. The .deb, .apk and .xbps pull it in; the AppImage and tarball use whatever is installed. Music works without it.
+Video playback needs MPV's library (libmpv) on your system: `libmpv2` on Debian/Ubuntu, `mpv-libs` on Alpine, `mpv` on Void, `libmpv-2.dll` next to `thc.exe` on Windows (mpv.io builds). The .deb, .apk and .xbps pull it in; the AppImage, tarball and Windows `.exe` use whatever is installed or placed next to them. Music works without it.
 
-Packages are built by `.github/workflows/packages.yml`; the recipes live in `packaging/` (AppImage script, Alpine `APKBUILD`, Void `template`) . A Snap package is planned (recipe in `snap/snapcraft.yaml`), as are Windows and macOS packages.
+Packages are built by `.github/workflows/packages.yml`; the recipes live in `packaging/` (AppImage script, Alpine `APKBUILD`, Void `template`) . The Windows `.exe` is built by the `thc-windows` job in the same workflow. A Snap package is planned (recipe in `snap/snapcraft.yaml`), as is a macOS package.
 
 ## Building from source
 
