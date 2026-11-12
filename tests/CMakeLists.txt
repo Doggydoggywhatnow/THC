@@ -25,6 +25,10 @@ add_executable(test_mediakeys test_mediakeys.c)
 target_link_libraries(test_mediakeys PRIVATE thc_core)
 add_test(NAME mediakeys COMMAND test_mediakeys)
 
+add_executable(test_ontop test_ontop.c)
+target_link_libraries(test_ontop PRIVATE thc_core)
+add_test(NAME ontop COMMAND test_ontop)
+
 add_executable(test_mpvconf test_mpvconf.c)
 target_link_libraries(test_mpvconf PRIVATE thc_core)
 add_test(NAME mpvconf COMMAND test_mpvconf)

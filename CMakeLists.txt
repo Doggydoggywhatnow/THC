@@ -128,6 +128,7 @@ add_library(thc_core STATIC
   src/library.c
   src/mediakeys.c
   src/mpvconf.c
+  src/ontop.c
   src/queue.c
   src/search.c
   src/settings.c

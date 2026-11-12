@@ -31,6 +31,8 @@ typedef struct VideoSession {
     double pos;         /* seconds */
     double duration;    /* seconds, 0 = unknown */
     uint64_t last_progress_ms;
+    bool fullscreen;    /* the window is fullscreen (observed) */
+    int ontop_applied;  /* last ontop value sent to mpv: -1 = not yet */
     bool chain;         /* the window outlives a file: THC loads the next one into it */
     int expect_stops;   /* END_FILE events caused by our own loadfile, to ignore */
     char error[256];
@@ -57,6 +59,8 @@ int video_pump(VideoSession *s);
 /* Send a raw mpv command string (for audio-only sessions driven by THC). */
 void video_command(VideoSession *s, const char *cmd);
 void video_set_pause(VideoSession *s, bool pause);
+/* Keep the window on top (or not); only talks to mpv when the value changes. macOS also gets ontop-level. */
+void video_set_ontop(VideoSession *s, bool on, const char *macos_level);
 void video_seek_abs(VideoSession *s, double seconds);
 void video_set_speed(VideoSession *s, double speed);
 void video_set_volume(VideoSession *s, double volume_percent);

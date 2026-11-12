@@ -310,6 +310,7 @@ static bool handle_hotkey(App *a, const SDL_KeyboardEvent *k)
             nav_reset(&a->mnav);
             music_search_focus(a);
             return true;
+        case ACT_ONTOP: player_cycle_ontop(a); return true;
         case ACT_RESCAN: app_rescan(a); app_toast(a, "Rescanning your library"); return true;
         case ACT_TEXT_BIGGER: change_text(a, 0.1f); return true;
         case ACT_TEXT_SMALLER: change_text(a, -0.1f); return true;

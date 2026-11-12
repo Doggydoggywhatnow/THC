@@ -8,6 +8,7 @@
  * history. The player bar at the bottom is drawn here too. */
 #include "app.h"
 #include "mediakeys.h"
+#include "ontop.h"
 #include "audio.h"
 #include "queue.h"
 
@@ -209,6 +210,24 @@ static bool start_audio(App *a, const QueueItem *it, double start)
     return true;
 }
 
+/* The video window stays on top per the setting (mpv.conf's own `ontop` never wins). */
+static void apply_ontop(App *a)
+{
+    if (!a->video.h) return;
+    bool playing = a->video.active && !a->video.paused && !P.video_idle;
+    video_set_ontop(&a->video,
+                    ontop_wanted(a->set.video_ontop, playing, a->video.fullscreen, a->set.video_ontop_ignore_fullscreen),
+                    ontop_level_name(a->set.video_ontop_macos_level));
+}
+
+void player_cycle_ontop(App *a)
+{
+    a->set.video_ontop = ontop_next_mode(a->set.video_ontop);
+    app_save_settings(a);
+    apply_ontop(a);
+    app_toast(a, "Video window on top: %s", ontop_mode_label(a->set.video_ontop));
+}
+
 static bool start_video_window(App *a, const QueueItem *it, double start)
 {
     if (!a->have_mpv) {
@@ -232,6 +251,7 @@ static bool start_video_window(App *a, const QueueItem *it, double start)
         return false;
     }
     P.video_idle = false;
+    apply_ontop(a);
     if (start > 0) {
         char t[32];
         fmt_time(start, t, sizeof t);
@@ -692,6 +712,7 @@ void music_pump(App *a)
     /* the video window */
     if (a->video.h) {
         int f = video_pump(&a->video);
+        apply_ontop(a);
         QueueItem *it = cur_item();
         if (f & (VIDEO_EV_PAUSED | VIDEO_EV_ENDED)) save_video_progress(a);
         else if ((f & VIDEO_EV_PROGRESS) && !P.video_idle) save_video_progress(a);

@@ -3,7 +3,7 @@
 #include <SDL3/SDL.h>
 #include <string.h>
 
-enum { OBS_TIME = 1, OBS_DURATION, OBS_PAUSE, OBS_EOF };
+enum { OBS_TIME = 1, OBS_DURATION, OBS_PAUSE, OBS_EOF, OBS_FULLSCREEN };
 
 /* Progress is reported at most this often while playing. */
 #define PROGRESS_INTERVAL_MS 5000
@@ -93,6 +93,9 @@ bool video_play(VideoSession *s, const MpvApi *api, const char *path, const Vide
     api->set_option_string(s->h, "idle", opt->chain ? "yes" : "once");
     api->set_option_string(s->h, "keep-open", "no");
     api->set_option_string(s->h, "title", "${media-title} - THC");
+    /* Wayland and X11 name the window by its app id / class: a stable one lets people write compositor rules */
+    api->set_option_string(s->h, "wayland-app-id", "thc");
+    api->set_option_string(s->h, "x11-name", "thc");
     if (opt->audio_only) {
         api->set_option_string(s->h, "vid", "no");
         api->set_option_string(s->h, "force-window", "no");
@@ -132,6 +135,8 @@ bool video_play(VideoSession *s, const MpvApi *api, const char *path, const Vide
     api->observe_property(s->h, OBS_DURATION, "duration", MPV_FORMAT_DOUBLE);
     api->observe_property(s->h, OBS_PAUSE, "pause", MPV_FORMAT_FLAG);
     api->observe_property(s->h, OBS_EOF, "eof-reached", MPV_FORMAT_FLAG);
+    api->observe_property(s->h, OBS_FULLSCREEN, "fullscreen", MPV_FORMAT_FLAG);
+    s->ontop_applied = -1;
     if (opt->wake_event)
         api->set_wakeup_callback(s->h, wakeup, (void *)(uintptr_t)opt->wake_event);
 
@@ -195,6 +200,7 @@ int video_pump(VideoSession *s)
             case OBS_EOF:
                 if (*(int *)p->data) s->reached_eof = true;
                 break;
+            case OBS_FULLSCREEN: s->fullscreen = *(int *)p->data != 0; break;
             }
             break;
         }
@@ -257,6 +263,19 @@ int video_pump(VideoSession *s)
 void video_command(VideoSession *s, const char *cmd)
 {
     if (s->h) s->api->command_string(s->h, cmd);
+}
+
+void video_set_ontop(VideoSession *s, bool on, const char *macos_level)
+{
+    if (!s->h || s->ontop_applied == (on ? 1 : 0)) return;
+    s->ontop_applied = on ? 1 : 0;
+    /* a property, not an option: mpv.conf overrides options set before startup */
+#ifdef __APPLE__
+    if (macos_level) s->api->set_property_string(s->h, "ontop-level", macos_level);
+#else
+    (void)macos_level;
+#endif
+    s->api->set_property_string(s->h, "ontop", on ? "yes" : "no");
 }
 
 void video_set_pause(VideoSession *s, bool pause)

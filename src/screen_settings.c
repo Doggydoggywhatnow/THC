@@ -1,5 +1,6 @@
 /* screen_settings.c: everything the user can change, grouped by topic. */
 #include "app.h"
+#include "ontop.h"
 #include "hotkeys.h"
 #include "mpvconf.h"
 
@@ -431,6 +432,17 @@ static void page_system(App *a, Layout *L)
     }
     note(a, L, ICON_SPARK,
          "System-wide works through MPRIS on Linux (needs libdbus). On Windows and macOS the keys work while THC's window is focused.");
+
+    group(a, L, "Video window", "How THC's MPV window behaves among your other windows.");
+    static const char *const ontop[] = { "Off", "While playing", "Always" };
+    choice(a, L, "set-ontop", "Keep video on top", ontop, 3, &s->video_ontop);
+    tog(a, L, "set-ontop-fs", "Ignore in fullscreen", "Fullscreen already covers the screen", &s->video_ontop_ignore_fullscreen);
+    static const char *const levels[] = { "Window level", "Above everything" };
+    choice(a, L, "set-ontop-level", "macOS stacking level", levels, 2, &s->video_ontop_macos_level);
+    if (ontop_is_wayland(SDL_getenv("XDG_SESSION_TYPE"), SDL_getenv("WAYLAND_DISPLAY")))
+        note(a, L, ICON_SPARK,
+             "On Wayland your compositor decides this. THC's video window has the app id \"thc\", so you can add a rule for it.");
+    note(a, L, ICON_SPARK, "This setting wins over \"ontop\" in mpv.conf. The mpv window's own T key still toggles it for a moment.");
 
     group(a, L, "Now playing", "What your desktop, lock screen and other apps can see about what THC is playing.");
     tog(a, L, "set-np-music", "Show music", "Title, artist and album", &s->nowplaying_music);
