@@ -194,6 +194,15 @@ if(THC_BUILD_APP)
   thc_warnings(thc)
 endif()
 
+# thc-inspect: a separate read-only program that checks what THC does (links SQLite only).
+option(THC_BUILD_INSPECT "Build thc-inspect" ON)
+if(THC_BUILD_INSPECT)
+  add_executable(thc-inspect tools/inspect/inspect.c)
+  target_link_libraries(thc-inspect PRIVATE SQLite::SQLite3)
+  target_compile_definitions(thc-inspect PRIVATE INSPECT_VERSION="${PROJECT_VERSION}")
+  thc_warnings(thc-inspect)
+endif()
+
 enable_testing()
 add_subdirectory(tests)
 

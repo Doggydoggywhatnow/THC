@@ -79,3 +79,24 @@ if(THC_BUILD_APP)
   target_link_libraries(test_thumbs_core PRIVATE SDL3::SDL3)
   add_test(NAME thumbs COMMAND test_thumbs_core WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 endif()
+
+# thc-inspect: reports, exit codes, the imports check on a bad program, the media fingerprint.
+if(UNIX AND THC_BUILD_INSPECT)
+  add_executable(inspect_netuser inspect_netuser.c)
+  add_executable(test_inspect test_inspect.c)
+  target_link_libraries(test_inspect PRIVATE thc_core)
+  target_compile_definitions(test_inspect PRIVATE INSPECT_BIN="$<TARGET_FILE:thc-inspect>"
+                             INSPECT_NETUSER="$<TARGET_FILE:inspect_netuser>")
+  add_dependencies(test_inspect thc-inspect inspect_netuser)
+  add_test(NAME inspect COMMAND test_inspect WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+endif()
+
+# THC's core (history, queue, search) works with no network at all (skipped where unshare is not allowed).
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  foreach(t history_compat queue search)
+    add_test(NAME no_network_${t}
+             COMMAND sh -c "unshare -n true 2>/dev/null || exit 77; exec unshare -n $<TARGET_FILE:test_${t}>"
+             WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+    set_tests_properties(no_network_${t} PROPERTIES SKIP_RETURN_CODE 77)
+  endforeach()
+endif()

@@ -105,6 +105,23 @@ static int real_setter(void *ud, const char *name, const char *value)
     return api.set_option_string((mpv_handle *)ud, name, value);
 }
 
+/* THC's network block must win over a mpv.conf that turns online features on. */
+static void check_block(VideoSession *s)
+{
+    CHECK(str_is(s, "ytdl", "no"));
+    CHECK(str_is(s, "load-unsafe-playlists", "no"));
+    char *v = api.get_property_string(s->h, "stream-lavf-o");
+    bool ok = v && strstr(v, "protocol_whitelist") && strstr(v, "file") && !strstr(v, "http");
+    if (!ok) fprintf(stderr, "stream-lavf-o = \"%s\"\n", v ? v : "(null)");
+    CHECK(ok);
+    if (v) api.free(v);
+}
+
+static void check_unblocked(VideoSession *s)
+{
+    CHECK(str_is(s, "ytdl", "yes"));                 /* with the block off, mpv.conf is respected */
+}
+
 int main(void)
 {
     memset(&api, 0, sizeof api);
@@ -170,6 +187,30 @@ int main(void)
     session("mpvcfg_thc", check_script);
     SDL_RemovePath("mpvcfg_thc/scripts/set_volume.lua");
     SDL_RemovePath("mpvcfg_thc/scripts");
+
+    /* 6. "Block network in MPV" beats mpv.conf; off, mpv.conf is respected */
+    write_file("mpvcfg_thc/mpv.conf",
+               "ao=null\nytdl=yes\nload-unsafe-playlists=yes\nstream-lavf-o=protocol_whitelist=%15%file,http,https\n");
+    {
+        VideoSession s;
+        VideoOptions o = { "mpvcfg_thc", 0, true, 0, false, true };
+        CHECK(video_play(&s, &api, THC_TEST_DATA "/tone.mp3", &o));
+        if (s.h) {
+            check_block(&s);
+            /* ...and local files still play under the protocol whitelist */
+            for (int i = 0; i < 60 && s.duration <= 0; i++) { SDL_Delay(50); video_pump(&s); }
+            CHECK(s.duration > 0 && !s.failed);
+            video_stop(&s);
+        }
+        VideoOptions off = { "mpvcfg_thc", 0, true, 0, false, false };
+        CHECK(video_play(&s, &api, THC_TEST_DATA "/tone.mp3", &off));
+        if (s.h) { check_unblocked(&s); video_stop(&s); }
+        /* network addresses are refused outright while the block is on */
+        CHECK(!video_play(&s, &api, "http://example.invalid/a.mp4", &o));
+        CHECK(video_is_url("https://x/y") && video_is_url("rtsp://x") && video_is_url("ftp://x"));
+        CHECK(!video_is_url("file:///a/b.mp4") && !video_is_url("/a/b.mp4") && !video_is_url("C:\\v\\a.mp4") &&
+              !video_is_url("relative/a.mp4") && !video_is_url(""));
+    }
 
     SDL_RemovePath("mpvcfg_thc/mpv.conf");
     SDL_RemovePath("mpvcfg_thc/input.conf");

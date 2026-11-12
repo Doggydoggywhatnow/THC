@@ -843,6 +843,71 @@ static void page_mpv(App *a, Layout *L)
     }
 }
 
+/* "What THC stores": the entries of THC's data folder with their sizes (folders add up everything inside). */
+typedef struct StoredItem { char name[96]; Sint64 size; bool dir; } StoredItem;
+static StoredItem g_stored[32];
+static int g_stored_n;
+static Uint64 g_stored_at;
+
+static SDL_EnumerationResult sum_cb(void *ud, const char *dirname, const char *fname)
+{
+    char path[THC_PATH_MAX];
+    SDL_snprintf(path, sizeof path, "%s/%s", dirname, fname);
+    SDL_PathInfo pi;
+    if (!SDL_GetPathInfo(path, &pi)) return SDL_ENUM_CONTINUE;
+    if (pi.type == SDL_PATHTYPE_DIRECTORY) SDL_EnumerateDirectory(path, sum_cb, ud);
+    else *(Sint64 *)ud += (Sint64)pi.size;
+    return SDL_ENUM_CONTINUE;
+}
+
+static SDL_EnumerationResult stored_cb(void *ud, const char *dirname, const char *fname)
+{
+    (void)ud;
+    if (g_stored_n >= 32) return SDL_ENUM_SUCCESS;
+    char path[THC_PATH_MAX];
+    SDL_snprintf(path, sizeof path, "%s%s", dirname, fname);
+    SDL_PathInfo pi;
+    if (!SDL_GetPathInfo(path, &pi)) return SDL_ENUM_CONTINUE;
+    StoredItem *it = &g_stored[g_stored_n++];
+    SDL_strlcpy(it->name, fname, sizeof it->name);
+    it->dir = pi.type == SDL_PATHTYPE_DIRECTORY;
+    it->size = 0;
+    if (it->dir) SDL_EnumerateDirectory(path, sum_cb, &it->size);
+    else it->size = (Sint64)pi.size;
+    return SDL_ENUM_CONTINUE;
+}
+
+static void stored_refresh(App *a)
+{
+    if (g_stored_at && SDL_GetTicks() - g_stored_at < 5000) return;
+    g_stored_at = SDL_GetTicks();
+    g_stored_n = 0;
+    SDL_EnumerateDirectory(a->data_dir, stored_cb, NULL);
+}
+
+static void page_privacy_stored(App *a, Layout *L)
+{
+    Ui *ui = &a->ui;
+    const Theme *t = &ui->th;
+    stored_refresh(a);
+    group(a, L, "What THC stores", "Everything THC keeps is in this one folder. Nothing else is written, and your media files are never changed.");
+    for (int i = 0; i < g_stored_n; i++) {
+        SDL_FRect r = next_row(a, L, dp(ui, 44));
+        ui_fill(ui, r, t->surface, dp(ui, 10));
+        char name[120], size[40];
+        SDL_snprintf(name, sizeof name, "%s%s", g_stored[i].name, g_stored[i].dir ? "/" : "");
+        double kb = (double)g_stored[i].size / 1024.0;
+        if (kb < 1024) SDL_snprintf(size, sizeof size, "%.0f KB", kb < 1 && g_stored[i].size > 0 ? 1 : kb);
+        else SDL_snprintf(size, sizeof size, "%.1f MB", kb / 1024.0);
+        ui_text_center(ui, FONT_REGULAR, TS_BODY, (SDL_FRect){ r.x + dp(ui, 16), r.y, r.w * 0.6f, r.h }, t->text, name, false);
+        ui_text_center(ui, FONT_REGULAR, TS_BODY, (SDL_FRect){ r.x + r.w * 0.6f, r.y, r.w * 0.4f - dp(ui, 16), r.h },
+                       t->text_dim, size, true);
+    }
+    note(a, L, ICON_SHIELD,
+         "To check this yourself, run thc-inspect: it lists these files, shows whether THC has any network connection "
+         "and whether THC's program contains network code. It only reads, never changes anything.");
+}
+
 static void page_privacy(App *a, Layout *L)
 {
     Ui *ui = &a->ui;
@@ -893,6 +958,11 @@ static void page_privacy(App *a, Layout *L)
     if (ui_button(ui, ui_id("data-open"), (SDL_FRect){ r.x + r.w - dp(ui, 164), r.y + dp(ui, 12), dp(ui, 150), dp(ui, 40) },
                   "Open folder", ICON_FOLDER, false))
         open_folder(a, a->data_dir);
+    group(a, L, "Network", "THC itself never uses the network. This also keeps MPV, which plays your videos, offline.");
+    if (ui_toggle(ui, ui_id("set-mpvblock"), next_row(a, L, dp(ui, 72)), "Block network in MPV",
+                  "No youtube-dl, no web addresses, only local files. Wins over mpv.conf.", &a->set.mpv_block_network))
+        app_save_settings(a);
+    page_privacy_stored(a, L);
     group(a, L, "Episode descriptions", NULL);
     planned_row(a, L, "Fetch episode and season descriptions",
                 "Would be strictly opt-in and off by default. Not in this version.");

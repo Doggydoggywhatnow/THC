@@ -31,6 +31,7 @@ typedef struct VideoSession {
     double pos;         /* seconds */
     double duration;    /* seconds, 0 = unknown */
     uint64_t last_progress_ms;
+    bool block_network; /* refuse network addresses */
     bool fullscreen;    /* the window is fullscreen (observed) */
     int ontop_applied;  /* last ontop value sent to mpv: -1 = not yet */
     bool chain;         /* the window outlives a file: THC loads the next one into it */
@@ -46,8 +47,11 @@ typedef struct VideoOptions {
     bool audio_only;
     uint32_t wake_event;     /* SDL user event pushed when mpv has news */
     bool chain;              /* keep the window open between files (video queue) */
+    bool block_network;      /* no ytdl, no URL playlists, no network protocols (wins over mpv.conf) */
 } VideoOptions;
 
+/* True for "scheme://..." (other than file://). */
+bool video_is_url(const char *path);
 bool video_play(VideoSession *s, const MpvApi *api, const char *path, const VideoOptions *opt);
 
 /* Load another file into the same session (same window), starting at `start` seconds. */

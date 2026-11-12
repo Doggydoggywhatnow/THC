@@ -183,7 +183,7 @@ static bool start_audio(App *a, const QueueItem *it, double start)
     bool use_mpv = a->have_mpv && (!engine_ok || book);
     char err[256] = "";
     if (use_mpv) {
-        VideoOptions o = { a->mpv_dir, start, true, a->mpv_event, false };
+        VideoOptions o = { a->mpv_dir, start, true, a->mpv_event, false, a->set.mpv_block_network };
         if (video_play(&P.mpv, &a->mpv, it->path, &o)) {
             P.ab = BK_MPV;
             video_set_volume(&P.mpv, a->set.volume);
@@ -242,7 +242,7 @@ static bool start_video_window(App *a, const QueueItem *it, double start)
         ok = video_load(&a->video, it->path, start);
     } else {
         if (a->video.h) video_stop(&a->video);
-        VideoOptions o = { a->mpv_dir, start, false, a->mpv_event, true };
+        VideoOptions o = { a->mpv_dir, start, false, a->mpv_event, true, a->set.mpv_block_network };
         ok = video_play(&a->video, &a->mpv, it->path, &o);
         if (!ok) app_toast(a, "%s", a->video.error);
     }
@@ -305,7 +305,7 @@ static bool start_item(App *a, int qid, int idx)
     P.music_suspended = false;
     if (plan.backend == BACKEND_MPV_AUDIO && it->kind == QK_VIDEO) {
         /* listen-only video from the music queue */
-        VideoOptions o = { a->mpv_dir, start, true, a->mpv_event, false };
+        VideoOptions o = { a->mpv_dir, start, true, a->mpv_event, false, a->set.mpv_block_network };
         stop_audio(a);
         if (!video_play(&P.mpv, &a->mpv, it->path, &o)) {
             app_toast(a, "Could not play %s", it->title);

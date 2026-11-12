@@ -49,10 +49,40 @@ static void load_user_scripts(const MpvApi *api, mpv_handle *h, const char *conf
     SDL_EnumerateDirectory(dir, load_script_cb, &c);
 }
 
+/* THC plays files from the library only. With the block on, mpv gets no youtube-dl, no playlists that
+ * can pull in URLs, and a protocol whitelist of local ones, set both before startup and again as
+ * properties afterwards (mpv.conf is loaded at startup and would otherwise win). */
+bool video_is_url(const char *path)
+{
+    if (!path) return false;
+    const char *p = path;
+    while ((*p >= 'a' && *p <= 'z') || (*p >= 'A' && *p <= 'Z') || (*p >= '0' && *p <= '9') || *p == '+' || *p == '-' ||
+           *p == '.')
+        p++;
+    /* "C:\\music" is a Windows drive, not a scheme: schemes are at least two letters */
+    return p - path >= 2 && p[0] == ':' && p[1] == '/' && p[2] == '/' && SDL_strncasecmp(path, "file://", 7) != 0;
+}
+
+static void block_network_options(const MpvApi *api, mpv_handle *h, bool as_property)
+{
+    typedef int (*SetFn)(mpv_handle *, const char *, const char *);
+    SetFn set = as_property ? api->set_property_string : api->set_option_string;
+    set(h, "ytdl", "no");
+    set(h, "load-unsafe-playlists", "no");
+    set(h, "stream-lavf-o", "protocol_whitelist=%16%file,crypto,data");
+    set(h, "demuxer-lavf-o", "protocol_whitelist=%16%file,crypto,data");
+    set(h, "network-timeout", "1");
+}
+
 bool video_play(VideoSession *s, const MpvApi *api, const char *path, const VideoOptions *opt)
 {
     memset(s, 0, sizeof *s);
     s->api = api;
+    s->block_network = opt->block_network;
+    if (opt->block_network && video_is_url(path)) {
+        SDL_strlcpy(s->error, "THC does not open network addresses (Settings, Privacy)", sizeof s->error);
+        return false;
+    }
     if (!api || !api->lib) {
         SDL_strlcpy(s->error, "libmpv is not available", sizeof s->error);
         return false;
@@ -90,6 +120,7 @@ bool video_play(VideoSession *s, const MpvApi *api, const char *path, const Vide
     api->set_option_string(s->h, "input-default-bindings", "yes");
     api->set_option_string(s->h, "input-vo-keyboard", "yes");
     api->set_option_string(s->h, "osc", "yes");
+    if (opt->block_network) block_network_options(api, s->h, false);
     api->set_option_string(s->h, "idle", opt->chain ? "yes" : "once");
     api->set_option_string(s->h, "keep-open", "no");
     api->set_option_string(s->h, "title", "${media-title} - THC");
@@ -119,6 +150,7 @@ bool video_play(VideoSession *s, const MpvApi *api, const char *path, const Vide
         api->set_property_string(s->h, "resume-playback", "no");
         api->set_property_string(s->h, "save-position-on-quit", "no");
         api->set_property_string(s->h, "watch-later-directory", wl);
+        if (opt->block_network) block_network_options(api, s->h, true);
         char sb[64];
         SDL_snprintf(sb, sizeof sb, "%.3f", opt->start > 1.0 ? opt->start : 0.0);
         api->set_property_string(s->h, "start", sb);
@@ -157,6 +189,7 @@ bool video_play(VideoSession *s, const MpvApi *api, const char *path, const Vide
 bool video_load(VideoSession *s, const char *path, double start)
 {
     if (!s->h) return false;
+    if (s->block_network && video_is_url(path)) return false;
     char sb[64];
     SDL_snprintf(sb, sizeof sb, "%.3f", start > 1.0 ? start : 0.0);
     s->api->set_property_string(s->h, "start", sb);   /* a property: it wins over mpv.conf */
