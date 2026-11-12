@@ -96,6 +96,19 @@ Theme theme_make(int portal, bool dark, bool hc, int accent)
             t.accent = rgb(0x047857); t.accent2 = rgb(0x6D28D9);
         }
         break;
+    case PORTAL_NSFW: /* "After hours": wine and neon, deliberately unlike the three public portals */
+        if (dark) {
+            t.bg = rgb(0x1C0A14); t.bg2 = rgb(0x0A0408);
+            t.surface = rgb(0x2A1220); t.surface_hi = rgb(0x3A1A2D); t.border = rgb(0x4D2640);
+            t.text = rgb(0xFBEFF4); t.text_dim = rgb(0xC9A6B8);
+            t.accent = rgb(0xFF4F9A); t.accent2 = rgb(0xFFB020);
+        } else {
+            t.bg = rgb(0xFFF1F5); t.bg2 = rgb(0xFBE3EB);
+            t.surface = rgb(0xFFFFFF); t.surface_hi = rgb(0xFCE9F0); t.border = rgb(0xEFC6D5);
+            t.text = rgb(0x2A0E1B); t.text_dim = rgb(0x6B3F54);
+            t.accent = rgb(0xBE185D); t.accent2 = rgb(0xB45309);
+        }
+        break;
     case PORTAL_BOOKS: /* "Library": warm paper and ink */
         if (dark) {
             t.bg = rgb(0x17130F); t.bg2 = rgb(0x0D0B09);
@@ -1358,6 +1371,21 @@ void ui_icon(Ui *ui, UiIcon icon, SDL_FRect b, Color c)
             polyline(ui, t, 4, w, c);
         }
         break;
+    case ICON_BEER: {
+        /* a beer bottle with a label that reads XXX (three small crosses) */
+        float body[] = { X(0.42f), Y(0.08f), X(0.42f), Y(0.30f), X(0.30f), Y(0.42f), X(0.30f), Y(0.90f), X(0.70f), Y(0.90f),
+                         X(0.70f), Y(0.42f), X(0.58f), Y(0.30f), X(0.58f), Y(0.08f), X(0.42f), Y(0.08f) };
+        polyline(ui, body, 9, w, c);
+        ui_stroke(ui, (SDL_FRect){ X(0.30f), Y(0.52f), s * 0.40f, s * 0.26f }, c, s * 0.02f, w);
+        for (int i = 0; i < 3; i++) {
+            float cx = X(0.375f + 0.125f * (float)i), cy = Y(0.65f), d = s * 0.035f;
+            float a1[] = { cx - d, cy - d, cx + d, cy + d };
+            float a2[] = { cx - d, cy + d, cx + d, cy - d };
+            polyline(ui, a1, 2, w * 0.7f, c);
+            polyline(ui, a2, 2, w * 0.7f, c);
+        }
+        break;
+    }
     case ICON_CAMERA:
         ui_stroke(ui, (SDL_FRect){ X(0.10f), Y(0.28f), s * 0.80f, s * 0.54f }, c, s * 0.10f, w);
         {

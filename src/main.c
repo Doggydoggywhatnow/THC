@@ -93,6 +93,8 @@ void app_export_history(App *a, bool json)
 
 void queue_confirmed_clear(App *a, int queue);   /* player.c */
 
+static bool g_nsfw_confirmed;     /* the user said yes to "open the NSFW portal?" for this visit */
+
 static void run_confirmed(App *a)
 {
     switch (a->confirm.action) {
@@ -110,6 +112,7 @@ static void run_confirmed(App *a)
         queue_confirmed_clear(a, a->confirm.arg);
         break;
     case CONFIRM_DELETE_SHOT: screenshots_confirmed_delete(a); break;
+    case CONFIRM_OPEN_NSFW: g_nsfw_confirmed = true; app_go(a, SCREEN_NSFW); break;
     case CONFIRM_RESTORE: {
         BackupOptions opt = { a->bk_history, a->bk_screens };
         char err[256] = "";
@@ -141,6 +144,7 @@ static int portal_of(Screen s)
     switch (s) {
     case SCREEN_MUSIC: return PORTAL_MUSIC;
     case SCREEN_BOOKS: return PORTAL_BOOKS;
+    case SCREEN_NSFW: return PORTAL_NSFW;
     case SCREEN_SETTINGS: case SCREEN_SETUP: return PORTAL_NEUTRAL;
     default: return PORTAL_VIDEO;
     }
@@ -155,7 +159,16 @@ void app_go(App *a, Screen s)
         if (s == SCREEN_BOOKS) nav_reset(&a->bnav);
         return;
     }
-    if (a->screen == SCREEN_MUSIC && a->set.search_clear_on_leave) music_search_clear();
+    if (s == SCREEN_NSFW) {
+        if (!app_nsfw_tab_visible(a)) return;                 /* off or hidden: there is no such place */
+        if (a->set.nsfw_confirm_before_open && !g_nsfw_confirmed) {
+            app_confirm(a, CONFIRM_OPEN_NSFW, 0, "Open the NSFW portal?", "It shows items you marked NSFW.", "Open");
+            return;
+        }
+    }
+    if ((a->screen == SCREEN_MUSIC && a->set.search_clear_on_leave) || a->screen == SCREEN_NSFW || s == SCREEN_NSFW)
+        music_search_clear();                                 /* a search never carries over into or out of the NSFW portal */
+    if (a->screen == SCREEN_NSFW) g_nsfw_confirmed = false;
     if (s >= SCREEN_VIDEO && s <= SCREEN_SHOTS) {
         a->last_portal = s;
         a->set.last_portal = s - SCREEN_VIDEO;
@@ -364,6 +377,9 @@ static bool handle_hotkey(App *a, const SDL_KeyboardEvent *k)
         case ACT_PORTAL_MUSIC: app_go(a, SCREEN_MUSIC); return true;
         case ACT_PORTAL_BOOKS: app_go(a, SCREEN_BOOKS); return true;
         case ACT_PORTAL_SHOTS: app_go(a, SCREEN_SHOTS); return true;
+        case ACT_NSFW_MARK:
+        case ACT_NSFW_PANIC:
+        case ACT_NSFW_TAB: return app_nsfw_hotkey(a, (Action)i);
         case ACT_SETTINGS: app_go(a, SCREEN_SETTINGS); return true;
         case ACT_TOGGLE_THEME: toggle_theme(a); return true;
         case ACT_SEARCH:
@@ -407,6 +423,13 @@ static void go_back(App *a)
     case SCREEN_MUSIC: nav_pop(a, &a->mnav); break;
     case SCREEN_BOOKS: nav_pop(a, &a->bnav); break;
     case SCREEN_SHOTS: screenshots_back(); break;
+    case SCREEN_NSFW: {
+        PortalNav *nav = a->nsfw_sub == 0 ? &a->nvnav : a->nsfw_sub == 1 ? &a->nmnav : &a->nbnav;
+        app_nsfw_view_enter(a);
+        nav_pop(a, nav == &a->nvnav ? &a->vnav : nav == &a->nmnav ? &a->mnav : &a->bnav);
+        app_nsfw_view_leave(a);
+        break;
+    }
     case SCREEN_SETTINGS: app_go(a, a->last_portal ? a->last_portal : SCREEN_VIDEO); break;
     default: break;
     }
@@ -421,6 +444,8 @@ static void frame(App *a)
     Ui *ui = &a->ui;
     ui->th = theme_make(portal_of(a->screen), a->dark, a->set.high_contrast, a->set.accent);
     ui->modal_layer = (a->confirm.open || queue_menu_open()) ? UI_MODAL_LAYER : 0;
+    app_nsfw_frame(a);
+    if (a->screen == SCREEN_NSFW && !app_nsfw_tab_visible(a)) app_go(a, a->last_portal ? a->last_portal : SCREEN_VIDEO);
     ui_begin(ui);
     a->focus_file = NULL;
     art_frame(a);
@@ -440,6 +465,7 @@ static void frame(App *a)
         case SCREEN_MUSIC: portal_music(a, area); break;
         case SCREEN_BOOKS: portal_books(a, area); break;
         case SCREEN_SHOTS: portal_screenshots(a, area); break;
+        case SCREEN_NSFW: portal_nsfw(a, area); break;
         case SCREEN_SETTINGS: screen_settings(a, area); break;
         default: break;
         }
@@ -548,8 +574,11 @@ static void debug_script(App *a, Uint64 frame_no)
         } else {
             SDL_Keymod mod = 0;
             const char *k = name;
-            if (!SDL_strncmp(k, "Shift+", 6)) { mod = SDL_KMOD_LSHIFT; k += 6; }
-            if (!SDL_strncmp(k, "Ctrl+", 5)) { mod = SDL_KMOD_LCTRL; k += 5; }
+            for (bool more = true; more;) {        /* "Ctrl+Shift+H": any number of modifier prefixes */
+                more = false;
+                if (!SDL_strncmp(k, "Shift+", 6)) { mod |= SDL_KMOD_LSHIFT; k += 6; more = true; }
+                if (!SDL_strncmp(k, "Ctrl+", 5)) { mod |= SDL_KMOD_LCTRL; k += 5; more = true; }
+            }
             ev.type = SDL_EVENT_KEY_DOWN;
             ev.key.key = SDL_GetKeyFromName(k);
             ev.key.mod = mod;

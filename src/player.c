@@ -543,6 +543,36 @@ void player_clear_queue(App *a, int qid)
     queue_clear(q);
 }
 
+/* ---- NSFW (#13): stopping and queue clean-up ---- */
+
+static bool item_is_nsfw(App *a, const QueueItem *it)
+{
+    return a->nsfw && it && nsfw_hidden(a->nsfw, it->root, it->rel, false, it->size, NULL);
+}
+
+bool player_current_is_nsfw(App *a)
+{
+    return item_is_nsfw(a, cur_item());
+}
+
+/* Take every NSFW item out of both queues and their backlogs. With `stop`, whatever NSFW item is loaded
+ * stops first (audio silenced, the video window closed). Safe to call again and again. */
+void player_purge_nsfw(App *a, bool stop)
+{
+    for (int qid = 0; qid < QUEUE_COUNT; qid++) {
+        Queue *q = &Q[qid];
+        if (stop && P.active == qid && q->cur >= 0 && q->cur < q->n && item_is_nsfw(a, &q->items[q->cur])) {
+            if (qid == QUEUE_VIDEO) stop_video_window(a); else stop_audio(a);
+            P.next_at = 0;
+        }
+        for (int i = q->n - 1; i >= 0; i--)
+            if (item_is_nsfw(a, &q->items[i])) {
+                if (P.active == qid && i == q->cur && !stop) continue;      /* playing on: it stays, masked */
+                queue_remove(q, i);
+            }
+    }
+}
+
 /* The Stop button of the video pill: close the window; the video queue stays. */
 void player_close_video(App *a) { stop_video_window(a); }
 

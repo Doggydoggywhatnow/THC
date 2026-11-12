@@ -153,5 +153,44 @@ int main(void)
         CHECK(strlen(n.unknown) < sizeof n.unknown && strstr(n.unknown, "future_key_0 "));
         remove(newer);
     }
+    /* NSFW portal keys (#13): off by default, every key round-trips, nothing leaks into the unknown keys */
+    {
+        Settings a, b;
+        settings_defaults(&a);
+        CHECK(!a.nsfw_enabled && a.nsfw_tab == NSFW_TAB_VISIBLE && a.nsfw_hide_stops_playback && !a.nsfw_record_history);
+        CHECK(a.nsfw_clear_thumbs_on_exit && !a.nsfw_confirm_before_open && a.nsfw_mask_titles && !a.nsfw_rules_enabled);
+        CHECK(a.nsfw_rules[0] == 0 && a.nsfw_roots == 0 && a.nsfw_pin_hash[0] == 0 && a.nsfw_relock_minutes == 10);
+        CHECK_STR(k_actions[ACT_NSFW_MARK].def, "N");
+        CHECK_STR(k_actions[ACT_NSFW_PANIC].def, "Ctrl+Shift+X");
+        CHECK_STR(k_actions[ACT_NSFW_TAB].def, "Ctrl+Shift+H");
+        a.nsfw_enabled = true;
+        a.nsfw_tab = NSFW_TAB_HIDDEN;
+        a.nsfw_hide_stops_playback = false;
+        a.nsfw_record_history = true;
+        a.nsfw_clear_thumbs_on_exit = false;
+        a.nsfw_confirm_before_open = true;
+        a.nsfw_mask_titles = false;
+        a.nsfw_rules_enabled = true;
+        snprintf(a.nsfw_rules, sizeof a.nsfw_rules, "NSFW|*xxx*");
+        a.nsfw_roots = 5;
+        snprintf(a.nsfw_pin_salt, sizeof a.nsfw_pin_salt, "00aa");
+        snprintf(a.nsfw_pin_hash, sizeof a.nsfw_pin_hash, "ff00");
+        a.nsfw_relock_minutes = 30;
+        snprintf(a.hotkey[ACT_NSFW_MARK], sizeof a.hotkey[0], "F8");
+        CHECK(settings_save(&a, "thc_test_nsfw.ini"));
+        settings_defaults(&b);
+        CHECK(settings_load(&b, "thc_test_nsfw.ini"));
+        CHECK(b.nsfw_enabled && b.nsfw_tab == NSFW_TAB_HIDDEN && !b.nsfw_hide_stops_playback && b.nsfw_record_history);
+        CHECK(!b.nsfw_clear_thumbs_on_exit && b.nsfw_confirm_before_open && !b.nsfw_mask_titles && b.nsfw_rules_enabled);
+        CHECK_STR(b.nsfw_rules, "NSFW|*xxx*");
+        CHECK(b.nsfw_roots == 5 && b.nsfw_relock_minutes == 30);
+        CHECK_STR(b.nsfw_pin_salt, "00aa");
+        CHECK_STR(b.nsfw_pin_hash, "ff00");
+        CHECK_STR(b.hotkey[ACT_NSFW_MARK], "F8");
+        CHECK(b.unknown[0] == 0);
+        b.nsfw_relock_minutes = 9999;                            /* out of range values are clamped on load */
+        CHECK(settings_save(&b, "thc_test_nsfw.ini") && settings_load(&b, "thc_test_nsfw.ini") && b.nsfw_relock_minutes == 240);
+        remove("thc_test_nsfw.ini");
+    }
     TEST_DONE();
 }

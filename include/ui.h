@@ -201,7 +201,7 @@ typedef enum UiIcon {
     ICON_NOTE, ICON_BOOK, ICON_FOLDER, ICON_BACK, ICON_CHEVRON_RIGHT, ICON_CLOCK,
     ICON_VOLUME, ICON_REWIND, ICON_FORWARD, ICON_TV, ICON_STAR, ICON_SPARK, ICON_MOON,
     ICON_SUN, ICON_KEYBOARD, ICON_EYE, ICON_SHIELD, ICON_INFO, ICON_PLUS, ICON_CLOSE,
-    ICON_SORT, ICON_QUEUE, ICON_SHUFFLE, ICON_REPEAT, ICON_REPEAT_ONE, ICON_UP, ICON_DOWN, ICON_GRIP, ICON_MORE, ICON_CAMERA
+    ICON_SORT, ICON_QUEUE, ICON_SHUFFLE, ICON_REPEAT, ICON_REPEAT_ONE, ICON_UP, ICON_DOWN, ICON_GRIP, ICON_MORE, ICON_CAMERA, ICON_BEER
 } UiIcon;
 void ui_icon(Ui *ui, UiIcon icon, SDL_FRect box, Color c);
 
@@ -237,7 +237,7 @@ void ui_watch_status(Ui *ui, SDL_FRect r, float frac, bool watched, Color fill);
 
 /* Theme helpers. */
 Theme theme_make(int portal, bool dark, bool high_contrast, int accent_preset);
-enum { PORTAL_VIDEO = 0, PORTAL_MUSIC = 1, PORTAL_BOOKS = 2, PORTAL_NEUTRAL = 3 };
+enum { PORTAL_VIDEO = 0, PORTAL_MUSIC = 1, PORTAL_BOOKS = 2, PORTAL_NEUTRAL = 3, PORTAL_NSFW = 4 };
 #define ACCENT_PRESET_COUNT 7
 extern const char *const k_accent_names[ACCENT_PRESET_COUNT];
 

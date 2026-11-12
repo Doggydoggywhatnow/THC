@@ -26,7 +26,8 @@ void chrome_background(App *a)
               with_alpha(t->accent2, t->dark ? 26 : 18));
 }
 
-static const struct { Screen s; const char *label; UiIcon icon; } k_tabs[] = {
+typedef struct TabDef { Screen s; const char *label; UiIcon icon; } TabDef;
+static const TabDef k_tabs[] = {
     { SCREEN_VIDEO, "Video", ICON_FILM },
     { SCREEN_MUSIC, "Music", ICON_NOTE },
     { SCREEN_BOOKS, "Audiobooks", ICON_BOOK },
@@ -62,14 +63,19 @@ void chrome_topbar(App *a)
     x += lw + dp(ui, 36);
 
     /* portal tabs */
+    /* the NSFW tab is not here at all while the portal is off or the tab is hidden */
+    TabDef tabs[NTABS + 1];
+    int ntabs = 0;
+    for (int i = 0; i < NTABS; i++) tabs[ntabs++] = k_tabs[i];
+    if (app_nsfw_tab_visible(a)) tabs[ntabs++] = (TabDef){ SCREEN_NSFW, "NSFW", ICON_BEER };
     /* when the window is narrow only the selected tab keeps its label, the others are icons */
     float need = x + dp(ui, 150);
-    for (int i = 0; i < NTABS; i++) need += ui_text_w(ui, FONT_BOLD, TS_BODY, k_tabs[i].label) + dp(ui, 60);
+    for (int i = 0; i < ntabs; i++) need += ui_text_w(ui, FONT_BOLD, TS_BODY, tabs[i].label) + dp(ui, 60);
     bool compact = need > (float)ui->w;
-    for (int i = 0; i < NTABS; i++) {
-        bool sel = a->screen == k_tabs[i].s;
+    for (int i = 0; i < ntabs; i++) {
+        bool sel = a->screen == tabs[i].s;
         bool label = !compact || sel;
-        float tw = label ? ui_text_w(ui, FONT_BOLD, TS_BODY, k_tabs[i].label) + dp(ui, 52) : dp(ui, 46);
+        float tw = label ? ui_text_w(ui, FONT_BOLD, TS_BODY, tabs[i].label) + dp(ui, 52) : dp(ui, 46);
         SDL_FRect r = { x, (h - dp(ui, 40)) / 2, tw, dp(ui, 40) };
         Uint32 id = ui_idi("tab", i);
         UiItemState st = ui_item(ui, id, r);
@@ -78,14 +84,19 @@ void chrome_topbar(App *a)
         else if (hv > 0.01f) ui_fill(ui, r, with_alpha(t->surface_hi, (Uint8)(255 * hv)), r.h / 2);
         Color fg = sel ? t->bg2 : t->text;
         float is = dp(ui, 18);
-        ui_icon(ui, k_tabs[i].icon, (SDL_FRect){ label ? r.x + dp(ui, 14) : r.x + (r.w - is) / 2, r.y + (r.h - is) / 2, is, is }, fg);
+        ui_icon(ui, tabs[i].icon, (SDL_FRect){ label ? r.x + dp(ui, 14) : r.x + (r.w - is) / 2, r.y + (r.h - is) / 2, is, is }, fg);
         if (label)
             ui_text_center(ui, FONT_BOLD, TS_BODY, (SDL_FRect){ r.x + dp(ui, 38), r.y, r.w - dp(ui, 46), r.h }, fg,
-                           k_tabs[i].label, false);
+                           tabs[i].label, false);
         else
-            { if (st.hover || st.focused) ui_tooltip(ui, r, k_tabs[i].label); }
+            { if (st.hover || st.focused) ui_tooltip(ui, r, tabs[i].label); }
         if (st.focused) ui_focus_ring(ui, r, r.h / 2);
-        if (st.activated) app_go(a, k_tabs[i].s);
+        if (st.activated) app_go(a, tabs[i].s);
+        if (st.context && tabs[i].s == SCREEN_NSFW) {
+            float cx, cy;
+            ctx_pos(ui, r, &cx, &cy);
+            chrome_nsfw_tab_menu(a, cx, cy);
+        }
         x += tw + dp(ui, 8);
     }
 
@@ -130,9 +141,20 @@ void chrome_toast(App *a)
     float tw = ui_text_w(ui, FONT_BOLD, TS_BODY, a->toast) + dp(ui, 40);
     float th = dp(ui, 48);
     SDL_FRect r = { (ui->w - tw) / 2, ui->h - music_bar_height(a) - th - dp(ui, 28), tw, th };
+    float ub = a->undo.active ? ui_text_w(ui, FONT_BOLD, TS_BODY, "Undo") + dp(ui, 36) : 0;
+    r.x -= ub / 2;
+    r.w += ub;
     ui_shadow(ui, r, th / 2, dp(ui, 24), t->shadow);
     ui_fill(ui, r, t->text, th / 2);
-    ui_text_center(ui, FONT_BOLD, TS_BODY, r, t->bg2, a->toast, true);
+    ui_text_center(ui, FONT_BOLD, TS_BODY, (SDL_FRect){ r.x, r.y, r.w - ub, r.h }, t->bg2, a->toast, true);
+    if (ub > 0) {                       /* an Undo button for the last mark (items just left the normal portals) */
+        SDL_FRect u = { r.x + r.w - ub - dp(ui, 4), r.y + dp(ui, 6), ub, th - dp(ui, 12) };
+        ui_fill(ui, u, t->accent, u.h / 2);
+        ui_text_center(ui, FONT_BOLD, TS_BODY, u, t->on_accent, "Undo", false);
+        UiItemState us = ui_item(ui, ui_id("toast-undo"), u);
+        if (us.focused) ui_focus_ring(ui, u, u.h / 2);
+        if (us.activated) app_nsfw_undo(a);
+    }
     ui->needs_redraw = true;
 }
 

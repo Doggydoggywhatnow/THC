@@ -168,6 +168,7 @@ if(THC_BUILD_APP)
     src/player.c
     src/portal_books.c
     src/portal_music.c
+    src/portal_nsfw.c
     src/portal_screenshots.c
     src/portal_video.c
     src/scan.c

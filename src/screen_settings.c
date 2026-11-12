@@ -144,6 +144,8 @@ static void folder_row(App *a, Layout *L, int target, const char *label, char *p
         app_pick_folder(a, target, path);
 }
 
+static void tog(App *a, Layout *L, const char *id, const char *label, const char *hint, bool *v);
+
 static void page_library(App *a, Layout *L)
 {
     Ui *ui = &a->ui;
@@ -157,6 +159,28 @@ static void page_library(App *a, Layout *L)
     static const UiIcon icons[SECTION_COUNT] = { ICON_STAR, ICON_TV, ICON_SPARK, ICON_FILM };
     for (int i = 0; i < SECTION_COUNT; i++)
         folder_row(a, L, 3 + i, k_section_names[i], a->set.section_dir[i], icons[i]);
+    if (a->set.nsfw_enabled) {
+        group(a, L, "NSFW folders", "A whole library folder can count as NSFW: everything in it moves to the NSFW portal, including files added later.");
+        static const char *const root_names[ROOT_COUNT] = { "Video", "Music", "Audiobooks", "Anime", "Television", "Cartoons", "Movies" };
+        static const char *const root_hint[ROOT_COUNT] = { "Main video folder", "Main music folder", "Main audiobook folder", "Section folder",
+                                                           "Section folder", "Section folder", "Section folder" };
+        for (int r = 0; r < ROOT_COUNT; r++) {
+            const char *dir = r == ROOT_VIDEO ? a->set.video_dir : r == ROOT_MUSIC ? a->set.music_dir : r == ROOT_BOOKS ? a->set.books_dir
+                                                                                                                      : a->set.section_dir[r - ROOT_SECTION0];
+            if (!dir[0]) continue;
+            char lbl[80], id[24];
+            SDL_snprintf(lbl, sizeof lbl, "Treat the %s folder as NSFW", root_names[r]);
+            SDL_snprintf(id, sizeof id, "set-nsfw-root%d", r);
+            bool on = (a->set.nsfw_roots >> r) & 1, was = on;
+            tog(a, L, id, lbl, root_hint[r], &on);
+            if (on != was) {
+                a->set.nsfw_roots = on ? a->set.nsfw_roots | (1 << r) : a->set.nsfw_roots & ~(1 << r);
+                app_save_settings(a);
+                app_nsfw_sync(a);
+                a->nsfw_refresh = true;
+            }
+        }
+    }
     group(a, L, "Presentation", NULL);
     int mode = a->set.sort_mode;
     if (ui_segmented(ui, ui_id("set-sort"), next_row(a, L, 0), "Sort shows and movies", k_sort_names, SORT_COUNT, &mode)) {
@@ -989,6 +1013,45 @@ static void page_privacy(App *a, Layout *L)
         L->y += dp(ui, 46) + L->gap;
     }
     note(a, L, ICON_SHIELD, "Restoring saves your current files in a pre-restore folder first and applies the backup when THC next starts.");
+    group(a, L, "NSFW portal",
+          "Off by default. When it is on, you can mark videos, songs, books and folders as NSFW. Marked items leave the "
+          "normal portals and show only in the NSFW portal. Marks live in THC's history database; nothing on disk is touched.");
+    {
+        bool before = a->set.nsfw_enabled;
+        tog(a, L, "set-nsfw-on", "Enable the NSFW portal", "Adds the NSFW tab and the Mark as NSFW actions", &a->set.nsfw_enabled);
+        if (before != a->set.nsfw_enabled) {
+            app_nsfw_sync(a);
+            a->nsfw_refresh = true;
+            if (!a->set.nsfw_enabled) { player_purge_nsfw(a, false); a->nsfw_unlocked = true; }
+        }
+        if (a->set.nsfw_enabled) {
+            bool hidden = a->set.nsfw_tab == NSFW_TAB_HIDDEN, hb = hidden;
+            tog(a, L, "set-nsfw-hide", "Hide the NSFW tab", "Marked items stay out of the normal portals; show it again here or with the hotkey", &hidden);
+            if (hidden != hb) app_nsfw_set_tab_hidden(a, hidden);
+            tog(a, L, "set-nsfw-stop", "Hiding the tab stops NSFW playback", NULL, &a->set.nsfw_hide_stops_playback);
+            tog(a, L, "set-nsfw-hist", "Record history for NSFW items", "Off: no resume, plays or recently played", &a->set.nsfw_record_history);
+            tog(a, L, "set-nsfw-thumbs", "Clear NSFW thumbnails and screenshots when THC exits", NULL, &a->set.nsfw_clear_thumbs_on_exit);
+            tog(a, L, "set-nsfw-confirm", "Ask before opening the NSFW portal", NULL, &a->set.nsfw_confirm_before_open);
+            tog(a, L, "set-nsfw-mask", "Hide NSFW titles from the window title, queue and system media controls", NULL, &a->set.nsfw_mask_titles);
+            bool rb = a->set.nsfw_rules_enabled;
+            tog(a, L, "set-nsfw-rules", "Treat folder names that match a rule as NSFW", "For example NSFW or *xxx* (not case sensitive). Rules never override Not NSFW", &a->set.nsfw_rules_enabled);
+            char before[sizeof a->set.nsfw_rules];
+            SDL_strlcpy(before, a->set.nsfw_rules, sizeof before);
+            ui_textfield(ui, ui_id("set-nsfw-rulelist"), next_row(a, L, dp(ui, 52)), a->set.nsfw_rules, sizeof a->set.nsfw_rules,
+                         "Rules, separated by |   (for example NSFW|*xxx*)");
+            if (rb != a->set.nsfw_rules_enabled || strcmp(before, a->set.nsfw_rules)) {
+                app_save_settings(a);
+                app_nsfw_sync(a);
+                a->nsfw_refresh = true;
+            }
+            float rl = (float)a->set.nsfw_relock_minutes;
+            if (ui_slider(ui, ui_id("set-nsfw-relock"), next_row(a, L, 0), "Lock again after", &rl, 0, 120, 5, "%.0f min")) {
+                a->set.nsfw_relock_minutes = (int)rl;
+                app_save_settings(a);
+            }
+            note(a, L, ICON_SHIELD, "The PIN lock below is a courtesy lock, not security: your media files and THC's data are not encrypted.");
+        }
+    }
     group(a, L, "Network", "THC itself never uses the network. This also keeps MPV, which plays your videos, offline.");
     if (ui_toggle(ui, ui_id("set-mpvblock"), next_row(a, L, dp(ui, 72)), "Block network in MPV",
                   "No youtube-dl, no web addresses, only local files. Wins over mpv.conf.", &a->set.mpv_block_network))

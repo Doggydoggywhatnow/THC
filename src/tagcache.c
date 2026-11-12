@@ -113,6 +113,10 @@ void tagcache_start(App *a)
     int cap = 0;
     int n = collect(a, a->lib.root[ROOT_MUSIC], ROOT_MUSIC, &paths, &cap, 0);
     n = collect(a, a->lib.root[ROOT_BOOKS], ROOT_BOOKS, &paths, &cap, n);
+    if (a->lib_filtered) {            /* the NSFW portal's music and books have tags, too */
+        n = collect(a, a->nlib.root[ROOT_MUSIC], ROOT_MUSIC, &paths, &cap, n);
+        n = collect(a, a->nlib.root[ROOT_BOOKS], ROOT_BOOKS, &paths, &cap, n);
+    }
     if (n == 0) {
         free(paths);
         return;

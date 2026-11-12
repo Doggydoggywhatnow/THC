@@ -99,9 +99,10 @@ static int show_items(App *a, const char *key, int season, bool unwatched_only, 
 
 enum {
     CA_PLAY_NOW = 1, CA_PLAY_NEXT, CA_ADD_END, CA_ADD_OTHER, CA_PLAY_FROM_HERE, CA_ADD_UNWATCHED, CA_REMOVE,
-    CA_MOVE_OTHER, CA_GOTO, CA_MARK_PLAYED, CA_MARK_UNPLAYED, CA_MODE_WINDOW, CA_MODE_LISTEN, CA_MODE_SKIP, CA_FORGET
+    CA_MOVE_OTHER, CA_GOTO, CA_MARK_PLAYED, CA_MARK_UNPLAYED, CA_MODE_WINDOW, CA_MODE_LISTEN, CA_MODE_SKIP, CA_FORGET,
+    CA_NSFW_ON, CA_NSFW_OFF, CA_HIDE_TAB
 };
-enum { CT_ITEM = 1, CT_DIR, CT_SHOW, CT_QROW };
+enum { CT_ITEM = 1, CT_DIR, CT_SHOW, CT_QROW, CT_TAB };
 
 static struct {
     bool open, fresh;
@@ -114,6 +115,7 @@ static struct {
     char rel[THC_PATH_MAX];         /* CT_DIR: folder; CT_SHOW: the show's key */
     int season;                     /* CT_SHOW: -1 = the whole show */
     int qid, qidx;                  /* CT_QROW */
+    bool nsfw;                      /* opened inside the NSFW portal: act on its trees */
 } M;
 
 static void menu_row(int act, const char *label)
@@ -126,7 +128,6 @@ static void menu_row(int act, const char *label)
 
 static void menu_begin(App *a, float x, float y, int type)
 {
-    (void)a;
     SDL_zero(M);
     M.open = true;
     M.fresh = true;
@@ -134,6 +135,7 @@ static void menu_begin(App *a, float x, float y, int type)
     M.y = y;
     M.type = type;
     M.season = -1;
+    M.nsfw = a->nsfw_view;
 }
 
 static void menu_common_add(const char *other_label)
@@ -154,6 +156,7 @@ void queue_menu_item(App *a, float x, float y, int root, const FsNode *f)
     menu_row(CA_MARK_PLAYED, M.item.kind == QK_VIDEO ? "Mark as watched" : "Mark as played");
     menu_row(CA_MARK_UNPLAYED, M.item.kind == QK_VIDEO ? "Mark as not watched" : "Mark as not played");
     menu_row(CA_FORGET, "Remove from history");
+    if (a->set.nsfw_enabled) menu_row(a->nsfw_view ? CA_NSFW_OFF : CA_NSFW_ON, a->nsfw_view ? "Remove from NSFW" : "Mark as NSFW");
 }
 
 void queue_menu_dir(App *a, float x, float y, int root, const FsNode *dir)
@@ -164,6 +167,13 @@ void queue_menu_dir(App *a, float x, float y, int root, const FsNode *dir)
     menu_common_add("Add to the video queue");
     M.row[3].act = CA_ADD_OTHER;
     SDL_strlcpy(M.row[3].label, root == ROOT_VIDEO ? "Add to the music queue" : "Add to the video queue", sizeof M.row[3].label);
+    if (a->set.nsfw_enabled) menu_row(a->nsfw_view ? CA_NSFW_OFF : CA_NSFW_ON, a->nsfw_view ? "Remove from NSFW" : "Mark as NSFW");
+}
+
+void chrome_nsfw_tab_menu(App *a, float x, float y)
+{
+    menu_begin(a, x, y, CT_TAB);
+    menu_row(CA_HIDE_TAB, "Hide NSFW tab");
 }
 
 void queue_menu_show(App *a, float x, float y, const char *show_key, int season)
@@ -176,6 +186,10 @@ void queue_menu_show(App *a, float x, float y, const char *show_key, int season)
     menu_row(CA_ADD_END, season >= 0 ? "Add the season to the queue" : "Add the show to the queue");
     menu_row(CA_ADD_UNWATCHED, "Add unwatched only");
     menu_row(CA_ADD_OTHER, "Add to the music queue (sound only)");
+    if (a->set.nsfw_enabled) {
+        if (a->nsfw_view) menu_row(CA_NSFW_OFF, season >= 0 ? "Remove the season from NSFW" : "Remove the show from NSFW");
+        else menu_row(CA_NSFW_ON, season >= 0 ? "Mark season as NSFW" : "Mark the show as NSFW");
+    }
 }
 
 static void queue_menu_qrow(App *a, float x, float y, int qid, int idx)
@@ -236,7 +250,33 @@ static void mark_item(App *a, const QueueItem *it, bool played)
     app_toast(a, played ? "Marked as played" : "Marked as not played");
 }
 
-static void run_action(App *a, int act)
+static void nsfw_action(App *a, bool on)
+{
+    switch (M.type) {
+    case CT_ITEM: app_nsfw_mark(a, M.root, NSFW_SCOPE_FILE, M.item.rel, M.item.size, on); break;
+    case CT_DIR: app_nsfw_mark(a, M.root, NSFW_SCOPE_FOLDER, M.rel, 0, on); break;
+    case CT_SHOW: {
+        const Show *sh = NULL;
+        for (int i = 0; i < a->vlib.nshows; i++)
+            if (!strcmp(a->vlib.shows[i].key, M.rel)) sh = &a->vlib.shows[i];
+        if (!sh) break;
+        char rel[THC_PATH_MAX];
+        if (M.season >= 0 && M.season < sh->nseasons && !sh->seasons[M.season].dir) {
+            /* a season with no folder of its own: tag its episodes one by one */
+            const Season *se = &sh->seasons[M.season];
+            for (int e = 0; e < se->neps; e++)
+                app_nsfw_mark(a, sh->root, NSFW_SCOPE_FILE, fs_relpath(se->eps[e].file, rel, sizeof rel), se->eps[e].file->size, on);
+        } else {
+            const FsNode *d = M.season >= 0 ? sh->seasons[M.season].dir : sh->dir;
+            if (d) app_nsfw_mark(a, sh->root, NSFW_SCOPE_FOLDER, fs_relpath(d, rel, sizeof rel), 0, on);
+        }
+        break;
+    }
+    default: break;
+    }
+}
+
+static void run_action_inner(App *a, int act)
 {
     QueueItem *buf = NULL;
     int n = 0;
@@ -296,6 +336,9 @@ static void run_action(App *a, int act)
         app_history_changed();
         app_toast(a, "Removed from history");
         break;
+    case CA_NSFW_ON: nsfw_action(a, true); break;
+    case CA_NSFW_OFF: nsfw_action(a, false); break;
+    case CA_HIDE_TAB: app_nsfw_set_tab_hidden(a, true); break;
     case CA_GOTO: goto_item(a, &M.item); break;
     case CA_MARK_PLAYED: mark_item(a, &M.item, true); break;
     case CA_MARK_UNPLAYED: mark_item(a, &M.item, false); break;
@@ -308,6 +351,17 @@ static void run_action(App *a, int act)
     }
     }
     SDL_free(buf);
+}
+
+/* The menu opened inside the NSFW portal acts on that portal's trees, even though the swap is over by now. */
+static void run_action(App *a, int act)
+{
+    bool entered = M.nsfw && !a->nsfw_view;
+    bool nsfw = M.nsfw;
+    if (entered) app_nsfw_view_enter(a);
+    run_action_inner(a, act);
+    if (entered) app_nsfw_view_leave(a);
+    (void)nsfw;
 }
 
 bool queue_menu_open(void) { return M.open; }
