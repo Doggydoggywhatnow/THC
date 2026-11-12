@@ -196,6 +196,11 @@ static bool poster_card(App *a, SDL_FRect r, const Entry *en)
         frac = have ? (float)history_progress(&h) : 0;
         done = have && h.watched;
     }
+    {
+        const FsNode *wn = en->movie ? en->movie->file : en->show->dir;
+        if (!wn && en->show && en->show->nseasons && en->show->seasons[0].neps) wn = en->show->seasons[0].eps[0].file;
+        app_nsfw_why(a, root, wn, st.hover || st.focused, poster, meta, sizeof meta);
+    }
     ui_text_fit(ui, FONT_REGULAR, TS_SMALL, r.x, y, r.w, t->text_dim, meta);
     y += ui_line_h(ui, TS_SMALL) + dp(ui, 6);
     ui_watch_status(ui, (SDL_FRect){ r.x, y, r.w, dp(ui, 16) }, frac, done, t->accent);
@@ -250,7 +255,10 @@ static bool wide_card(App *a, SDL_FRect r, Uint32 id, const char *cover_title, c
     float y = r.y + ch + dp(ui, 12);
     ui_text_fit(ui, FONT_BOLD, TS_BODY, r.x, y, r.w, t->text, line1);
     y += ui_line_h(ui, TS_BODY);
-    ui_text_fit(ui, FONT_REGULAR, TS_SMALL, r.x, y, r.w, t->text_dim, line2);
+    char l2[300];
+    SDL_strlcpy(l2, line2, sizeof l2);
+    app_nsfw_why(a, root, file, st.hover || st.focused, card, l2, sizeof l2);
+    ui_text_fit(ui, FONT_REGULAR, TS_SMALL, r.x, y, r.w, t->text_dim, l2);
     return st.activated;
 }
 
@@ -717,6 +725,7 @@ static bool episode_row(App *a, SDL_FRect r, const Show *sh, const Season *se, c
             SDL_snprintf(meta + off, sizeof meta - off, " \xC2\xB7 %s left", p);
         }
     }
+    app_nsfw_why(a, sh->root, ep->file, st.hover || st.focused, r, meta, sizeof meta);
     ui_text_fit(ui, FONT_REGULAR, TS_SMALL, x, y, w, t->text_dim, meta);
     float barw = SDL_min(r.x + r.w - pad - x, dp(ui, 520));
     ui_watch_status(ui, (SDL_FRect){ x, r.y + r.h - pad - dp(ui, 18), barw, dp(ui, 18) },
@@ -885,11 +894,12 @@ static bool folder_card(App *a, SDL_FRect r, const FsNode *n, int root)
                                           is - dp(ui, 16) }, t->accent);
     float tx = box.x + dp(ui, 72);
     ui_text_fit(ui, FONT_BOLD, TS_BODY, tx, box.y + dp(ui, 16), box.w - dp(ui, 88), t->text, n->name);
-    char meta[48];
+    char meta[96];
     SDL_snprintf(meta, sizeof meta, "%d video%s", fs_count(n, MK_VIDEO), fs_count(n, MK_VIDEO) == 1 ? "" : "s");
+    app_nsfw_why(a, root, n, false, box, meta, sizeof meta);
     ui_text_fit(ui, FONT_REGULAR, TS_SMALL, tx, box.y + dp(ui, 16) + ui_line_h(ui, TS_BODY), box.w - dp(ui, 88),
                 t->text_dim, meta);
-    (void)root;
+    app_nsfw_why(a, root, n, st.hover || st.focused, box, NULL, 0);
     return st.activated;
 }
 
@@ -915,7 +925,11 @@ static bool file_row(App *a, SDL_FRect r, const FsNode *f, int root)
     float is = dp(ui, 20);
     ui_icon(ui, ICON_PLAY, (SDL_FRect){ r.x + dp(ui, 18), r.y + dp(ui, 14), is, is }, hv > 0.5f ? t->accent : t->text_dim);
     float tx = r.x + dp(ui, 52);
-    ui_text_fit(ui, FONT_BOLD, TS_BODY, tx, r.y + dp(ui, 12), r.w - dp(ui, 70), t->text, f->name);
+    char why[96] = "";
+    app_nsfw_why(a, root, f, st.hover || st.focused, r, why, sizeof why);
+    float whw = why[0] ? SDL_min(ui_text_w(ui, FONT_REGULAR, TS_SMALL, why), r.w * 0.4f) + dp(ui, 12) : 0;
+    ui_text_fit(ui, FONT_BOLD, TS_BODY, tx, r.y + dp(ui, 12), r.w - dp(ui, 70) - whw, t->text, f->name);
+    if (why[0]) ui_text_fit(ui, FONT_REGULAR, TS_SMALL, r.x + r.w - dp(ui, 18) - whw + dp(ui, 12), r.y + dp(ui, 14), whw - dp(ui, 12), t->text_dim, why);
     ui_watch_status(ui, (SDL_FRect){ tx, r.y + r.h - dp(ui, 26), SDL_min(r.w - dp(ui, 70), dp(ui, 420)), dp(ui, 16) },
                     have ? (float)history_progress(&e) : 0, have && e.watched, t->accent);
     return st.activated;

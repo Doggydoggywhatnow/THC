@@ -212,6 +212,7 @@ static bool book_card(App *a, SDL_FRect r, const Book *b)
     char meta[300];
     if (bi.author[0]) SDL_strlcpy(meta, bi.author, sizeof meta);
     else SDL_snprintf(meta, sizeof meta, "%d file%s", b->nfiles, b->nfiles == 1 ? "" : "s");
+    app_nsfw_why(a, ROOT_BOOKS, b->node, st.hover || st.focused, c, meta, sizeof meta);
     ui_text_fit(ui, FONT_REGULAR, TS_SMALL, r.x, y, r.w, t->text_dim, meta);
     y += ui_line_h(ui, TS_SMALL) + dp(ui, 6);
     ui_watch_status(ui, (SDL_FRect){ r.x, y, r.w, dp(ui, 16) }, bs.frac, b->nfiles && bs.done == b->nfiles, t->accent);

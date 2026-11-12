@@ -100,7 +100,7 @@ static int show_items(App *a, const char *key, int season, bool unwatched_only, 
 enum {
     CA_PLAY_NOW = 1, CA_PLAY_NEXT, CA_ADD_END, CA_ADD_OTHER, CA_PLAY_FROM_HERE, CA_ADD_UNWATCHED, CA_REMOVE,
     CA_MOVE_OTHER, CA_GOTO, CA_MARK_PLAYED, CA_MARK_UNPLAYED, CA_MODE_WINDOW, CA_MODE_LISTEN, CA_MODE_SKIP, CA_FORGET,
-    CA_NSFW_ON, CA_NSFW_OFF, CA_HIDE_TAB
+    CA_NSFW_ON, CA_NSFW_OFF, CA_HIDE_TAB, CA_NSFW_REMOVE, CA_NOTE
 };
 enum { CT_ITEM = 1, CT_DIR, CT_SHOW, CT_QROW, CT_TAB };
 
@@ -146,6 +146,26 @@ static void menu_common_add(const char *other_label)
     menu_row(CA_ADD_OTHER, other_label);
 }
 
+/* The NSFW rows of an item or folder menu (#28): inside the NSFW portal they depend on why it is NSFW. */
+static void nsfw_menu_rows(App *a, int root, const char *rel, bool is_dir, int64_t size)
+{
+    if (!a->set.nsfw_enabled) return;
+    if (!a->nsfw_view) { menu_row(CA_NSFW_ON, "Mark as NSFW"); return; }
+    int why = NSFW_WHY_NONE;
+    nsfw_hidden(a->nsfw, root, rel, is_dir, size, &why);
+    switch (nsfw_menu_action(why)) {
+    case NSFW_ACT_REMOVE: menu_row(CA_NSFW_REMOVE, "Remove from NSFW"); break;
+    case NSFW_ACT_OVERRIDE: menu_row(CA_NSFW_OFF, "Not NSFW (override)"); break;
+    default: menu_row(CA_NOTE, "This file is in your NSFW folder"); break;
+    }
+    const char *why_text = nsfw_why_text(why);
+    if (why_text[0] && why != NSFW_WHY_DIR) {
+        char lbl[56];
+        SDL_snprintf(lbl, sizeof lbl, "Why: %s", why_text);
+        menu_row(CA_NOTE, lbl);
+    }
+}
+
 void queue_menu_item(App *a, float x, float y, int root, const FsNode *f)
 {
     menu_begin(a, x, y, CT_ITEM);
@@ -156,7 +176,7 @@ void queue_menu_item(App *a, float x, float y, int root, const FsNode *f)
     menu_row(CA_MARK_PLAYED, M.item.kind == QK_VIDEO ? "Mark as watched" : "Mark as played");
     menu_row(CA_MARK_UNPLAYED, M.item.kind == QK_VIDEO ? "Mark as not watched" : "Mark as not played");
     menu_row(CA_FORGET, "Remove from history");
-    if (a->set.nsfw_enabled) menu_row(a->nsfw_view ? CA_NSFW_OFF : CA_NSFW_ON, a->nsfw_view ? "Remove from NSFW" : "Mark as NSFW");
+    nsfw_menu_rows(a, root, M.item.rel, false, M.item.size);
 }
 
 void queue_menu_dir(App *a, float x, float y, int root, const FsNode *dir)
@@ -167,7 +187,7 @@ void queue_menu_dir(App *a, float x, float y, int root, const FsNode *dir)
     menu_common_add("Add to the video queue");
     M.row[3].act = CA_ADD_OTHER;
     SDL_strlcpy(M.row[3].label, root == ROOT_VIDEO ? "Add to the music queue" : "Add to the video queue", sizeof M.row[3].label);
-    if (a->set.nsfw_enabled) menu_row(a->nsfw_view ? CA_NSFW_OFF : CA_NSFW_ON, a->nsfw_view ? "Remove from NSFW" : "Mark as NSFW");
+    nsfw_menu_rows(a, root, M.rel, true, 0);
 }
 
 void chrome_nsfw_tab_menu(App *a, float x, float y)
@@ -280,6 +300,15 @@ static void nsfw_action(App *a, bool on)
     }
 }
 
+static void nsfw_remove_action(App *a)
+{
+    switch (M.type) {
+    case CT_ITEM: app_nsfw_unmark(a, M.root, NSFW_SCOPE_FILE, M.item.rel, M.item.size); break;
+    case CT_DIR: app_nsfw_unmark(a, M.root, NSFW_SCOPE_FOLDER, M.rel, 0); break;
+    default: nsfw_action(a, false); break;
+    }
+}
+
 static void run_action_inner(App *a, int act)
 {
     QueueItem *buf = NULL;
@@ -342,6 +371,8 @@ static void run_action_inner(App *a, int act)
         break;
     case CA_NSFW_ON: nsfw_action(a, true); break;
     case CA_NSFW_OFF: nsfw_action(a, false); break;
+    case CA_NSFW_REMOVE: nsfw_remove_action(a); break;
+    case CA_NOTE: break;
     case CA_HIDE_TAB: app_nsfw_set_tab_hidden(a, true); break;
     case CA_GOTO: goto_item(a, &M.item); break;
     case CA_MARK_PLAYED: mark_item(a, &M.item, true); break;

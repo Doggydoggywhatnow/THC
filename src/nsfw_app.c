@@ -21,6 +21,23 @@ bool app_nsfw_hidden(App *a, int root, const FsNode *n)
     return node_hidden(&c, n);
 }
 
+void app_nsfw_why(App *a, int root, const FsNode *n, bool hover, SDL_FRect anchor, char *meta, size_t cap)
+{
+    if (!a->nsfw_view || !a->set.nsfw_enabled || !a->nsfw || !n) return;
+    char rel[THC_PATH_MAX];
+    fs_relpath(n, rel, sizeof rel);
+    int why = NSFW_WHY_NONE;
+    nsfw_hidden(a->nsfw, root, rel, n->dir, n->size, &why);
+    const char *text = nsfw_why_text(why);
+    if (!text[0]) return;
+    if (meta) {
+        char tmp[320];
+        SDL_snprintf(tmp, sizeof tmp, meta[0] ? "%s \xC2\xB7 %s" : "%s", text, meta);
+        SDL_strlcpy(meta, tmp, cap);
+    }
+    if (hover) ui_tooltip(&a->ui, anchor, text);
+}
+
 /* Is this path still somewhere in the library? (a scan in progress, or no library yet, answers yes) */
 static bool tag_exists(void *ud, int root, const char *rel)
 {
@@ -149,13 +166,27 @@ void app_nsfw_view_leave(App *a)
 /* Marking                                                                    */
 /* ------------------------------------------------------------------------ */
 
+static void nsfw_change(App *a, int root, int scope, const char *rel, int64_t size, int state);
+
 void app_nsfw_mark(App *a, int root, int scope, const char *rel, int64_t size, bool nsfw)
+{
+    nsfw_change(a, root, scope, rel, size, nsfw ? 1 : 0);
+}
+
+/* "Remove from NSFW" on an item that was marked directly: the mark goes away, nothing else is written. */
+void app_nsfw_unmark(App *a, int root, int scope, const char *rel, int64_t size)
+{
+    nsfw_change(a, root, scope, rel, size, -1);
+}
+
+static void nsfw_change(App *a, int root, int scope, const char *rel, int64_t size, int state)
 {
     if (!a->set.nsfw_enabled || !a->nsfw || !rel || !*rel) return;
     /* what was there before, so Undo can put it back: a tag of its own, or nothing (inherits) */
     bool was_hidden = nsfw_hidden(a->nsfw, root, rel, scope == NSFW_SCOPE_FOLDER, size, NULL);
     /* an explicit tag on the item itself: it beats anything inherited, in both directions */
-    nsfw_tag(a->nsfw, a->hist, root, scope, rel, size, nsfw ? 1 : 0);
+    if (state < 0) nsfw_untag(a->nsfw, a->hist, root, scope, rel, size);
+    else nsfw_tag(a->nsfw, a->hist, root, scope, rel, size, state);
     int prev = was_hidden ? 1 : 0;
     a->undo.active = true;
     a->undo.root = root;
@@ -166,7 +197,7 @@ void app_nsfw_mark(App *a, int root, int scope, const char *rel, int64_t size, b
     a->undo.until = a->ui.time + 6.0;
     player_purge_nsfw(a, false);
     a->nsfw_refresh = true;
-    app_toast(a, nsfw ? "Marked as NSFW" : "Removed from NSFW");
+    app_toast(a, state == 1 ? "Marked as NSFW" : "Removed from NSFW");
     a->toast_until = a->ui.time + 6.0;
 }
 
@@ -239,8 +270,22 @@ bool app_nsfw_hotkey(App *a, Action act)
         if (!a->set.nsfw_enabled || !a->focus_file || a->focus_file->dir) return false;
         char rel[THC_PATH_MAX];
         fs_relpath(a->focus_file, rel, sizeof rel);
-        /* in the NSFW portal the key removes the mark, elsewhere it adds it */
-        app_nsfw_mark(a, a->focus_root, NSFW_SCOPE_FILE, rel, a->focus_file->size, !a->nsfw_view);
+        /* in the NSFW portal the key removes the mark (or overrides an inherited one), elsewhere it adds it */
+        if (a->nsfw_view) {
+            int why = NSFW_WHY_NONE;
+            nsfw_hidden(a->nsfw, a->focus_root, rel, false, a->focus_file->size, &why);
+            int act = nsfw_menu_action(why);
+            if (act == NSFW_ACT_NONE) {
+                a->toast[0] = 0;
+                app_toast(a, "This file is in your NSFW folder");
+            } else if (act == NSFW_ACT_REMOVE) {
+                app_nsfw_unmark(a, a->focus_root, NSFW_SCOPE_FILE, rel, a->focus_file->size);
+            } else {
+                app_nsfw_mark(a, a->focus_root, NSFW_SCOPE_FILE, rel, a->focus_file->size, false);
+            }
+            return true;
+        }
+        app_nsfw_mark(a, a->focus_root, NSFW_SCOPE_FILE, rel, a->focus_file->size, true);
         return true;
     }
     default: return false;

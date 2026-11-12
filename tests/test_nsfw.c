@@ -109,6 +109,26 @@ int main(void)
     CHECK_STR(nsfw_why_text(NSFW_WHY_FOLDER), "In a folder you marked");
     CHECK_STR(nsfw_why_text(NSFW_WHY_LIBRARY), "Library folder marked NSFW");
     CHECK_STR(nsfw_why_text(NSFW_WHY_NONE), "");
+    /* #28: what the menu offers for each reason */
+    CHECK(nsfw_menu_action(NSFW_WHY_ITEM) == NSFW_ACT_REMOVE);
+    CHECK(nsfw_menu_action(NSFW_WHY_FOLDER) == NSFW_ACT_OVERRIDE && nsfw_menu_action(NSFW_WHY_LIBRARY) == NSFW_ACT_OVERRIDE);
+    CHECK(nsfw_menu_action(NSFW_WHY_DIR) == NSFW_ACT_NONE);                                  /* nothing destructive */
+    {
+        NsfwIndex *m = make(true);
+        NsfwConfig mc2 = { .enabled = true };
+        nsfw_index_config(m, &mc2);
+        nsfw_tag(m, NULL, 0, NSFW_SCOPE_FOLDER, "Shows/Secret", 0, 1);
+        int w = 0;
+        CHECK(nsfw_hidden(m, 0, "Shows/Secret/e1.mkv", false, 5, &w) && nsfw_menu_action(w) == NSFW_ACT_OVERRIDE);
+        nsfw_tag(m, NULL, 0, NSFW_SCOPE_FILE, "Shows/Secret/e1.mkv", 5, 0);                 /* "Not NSFW" on the inherited item */
+        CHECK(!nsfw_hidden(m, 0, "Shows/Secret/e1.mkv", false, 5, &w) && w == NSFW_WHY_EXPLICIT_NOT);
+        CHECK(nsfw_hidden(m, 0, "Shows/Secret/e2.mkv", false, 6, NULL));                    /* its siblings stay NSFW */
+        nsfw_tag(m, NULL, 0, NSFW_SCOPE_FILE, "Movies/film.mkv", 9, 1);
+        CHECK(nsfw_hidden(m, 0, "Movies/film.mkv", false, 9, &w) && nsfw_menu_action(w) == NSFW_ACT_REMOVE);
+        nsfw_untag(m, NULL, 0, NSFW_SCOPE_FILE, "Movies/film.mkv", 9);                      /* Remove from NSFW */
+        CHECK(!nsfw_hidden(m, 0, "Movies/film.mkv", false, 9, NULL));
+        nsfw_index_free(m);
+    }
     NsfwConfig on2 = { .enabled = true };
     nsfw_index_config(r, &on2);
     nsfw_tag(r, NULL, 0, NSFW_SCOPE_FILE, "Videos/nsfw/ok.mkv", 9, 0);

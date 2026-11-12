@@ -252,6 +252,16 @@ bool nsfw_path_same(const char *a, const char *b)
     return true;
 }
 
+int nsfw_menu_action(int why)
+{
+    switch (why) {
+    case NSFW_WHY_DIR: return NSFW_ACT_NONE;
+    case NSFW_WHY_FOLDER:
+    case NSFW_WHY_LIBRARY: return NSFW_ACT_OVERRIDE;
+    default: return NSFW_ACT_REMOVE;
+    }
+}
+
 const char *nsfw_why_text(int why)
 {
     switch (why) {

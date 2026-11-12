@@ -289,6 +289,9 @@ void app_nsfw_sync(App *a);               /* settings -> index config */
 void app_nsfw_apply(App *a);              /* refilter lib and nlib from full */
 void app_library_changed(App *a);         /* after a scan or a tag change: rebuild everything that reads the library */
 void app_free_library(App *a);
+/* #28: inside the NSFW portal only: put the reason an item is NSFW in front of `meta` ("Marked \xC2\xB7 2 seasons") and show it
+ * as a tooltip while `hover`. Does nothing anywhere else. `meta` may be NULL. */
+void app_nsfw_why(App *a, int root, const FsNode *n, bool hover, SDL_FRect anchor, char *meta, size_t cap);
 bool app_nsfw_hidden(App *a, int root, const FsNode *n);   /* the shared check, on a node of a->full */
 void app_nsfw_shutdown(App *a);
 void app_nsfw_cleanup(App *a);
@@ -299,6 +302,7 @@ bool app_nsfw_tab_visible(const App *a);
 void app_nsfw_view_enter(App *a);         /* swap in the NSFW trees and navigation: the portal screens then show NSFW items */
 void app_nsfw_view_leave(App *a);
 void app_nsfw_mark(App *a, int root, int scope, const char *rel, int64_t size, bool nsfw);
+void app_nsfw_unmark(App *a, int root, int scope, const char *rel, int64_t size);   /* drop the item's own mark */
 void app_nsfw_undo(App *a);
 void app_nsfw_set_tab_hidden(App *a, bool hidden);
 bool app_nsfw_hotkey(App *a, Action act);

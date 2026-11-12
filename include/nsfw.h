@@ -70,6 +70,11 @@ int nsfw_groups(const FsNode *dir, NsfwGroup *out, int max);
 /* Is `path` strictly inside `dir`? Is it the same folder? (separator and, on Windows, case insensitive) */
 bool nsfw_path_inside(const char *dir, const char *path);
 bool nsfw_path_same(const char *a, const char *b);
+/* What the right-click menu offers for an item that is NSFW for this reason (#28). */
+enum { NSFW_ACT_NONE = 0,      /* nothing: it comes from the NSFW folder (a note is shown instead) */
+       NSFW_ACT_REMOVE,        /* "Remove from NSFW": the item itself was marked */
+       NSFW_ACT_OVERRIDE };    /* "Not NSFW": an inherited mark, overridden on this item */
+int nsfw_menu_action(int why);
 /* The text the NSFW portal shows for a reason (#28); "" for none. */
 const char *nsfw_why_text(int why);
 

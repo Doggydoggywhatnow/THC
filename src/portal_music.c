@@ -196,6 +196,10 @@ static bool cover_card(App *a, SDL_FRect r, const FsNode *n, bool round, const c
     }
     if (st.focused) ui_focus_ring(ui, c, rad);
     float y = r.y + r.w + dp(ui, 12);
+    char meta2[300];
+    SDL_strlcpy(meta2, meta ? meta : "", sizeof meta2);
+    app_nsfw_why(a, ROOT_MUSIC, n, st.hover || st.focused, cover, meta2, sizeof meta2);
+    meta = meta2;
     if (round) {
         float tw = SDL_min(r.w, ui_text_w(ui, FONT_BOLD, TS_BODY, n->name));
         ui_text_fit(ui, FONT_BOLD, TS_BODY, r.x + (r.w - tw) / 2, y, r.w, t->text, n->name);
@@ -302,6 +306,7 @@ static float track_list(App *a, const FsNode *dir, float x, float y, float w)
                 ui_text_center(ui, FONT_BOLD, TS_BODY, (SDL_FRect){ tx, r.y, avail, rh },
                                cur ? t->accent : t->text, title, false);
             }
+            if (st.hover || st.focused) app_nsfw_why(a, ROOT_MUSIC, k, true, r, NULL, 0);
             SDL_FRect chip = { r.x + r.w - fw - dp(ui, 16), r.y + (rh - dp(ui, 22)) / 2, fw, dp(ui, 22) };
             ui_stroke(ui, chip, with_alpha(t->text_dim, 120), chip.h / 2, dp(ui, 1));
             ui_text_center(ui, FONT_BOLD, TS_SMALL, chip, t->text_dim, fmt, true);
@@ -471,6 +476,7 @@ static float search_results(App *a, float x, float y, float w)
                     char sub[300];
                     if (tg && (tg->artist[0] || tg->album[0])) SDL_snprintf(sub, sizeof sub, "%s%s%s", tg->artist, tg->artist[0] && tg->album[0] ? " \xC2\xB7 " : "", tg->album);
                     else SDL_strlcpy(sub, f->parent ? f->parent->name : "", sizeof sub);
+                    app_nsfw_why(a, ROOT_MUSIC, f, st.hover || st.focused, r, sub, sizeof sub);
                     ui_text_fit(ui, FONT_REGULAR, TS_SMALL, r.x + dp(ui, 52), r.y + dp(ui, 8) + ui_line_h(ui, TS_BODY), r.w - dp(ui, 68), t->text_dim, sub);
                 }
                 if (st.activated) music_play_folder(a, ROOT_MUSIC, f, 0);
