@@ -101,6 +101,23 @@ int main(void)
     CHECK(f != NULL);
     if (f) fclose(f);
 
+    /* NSFW screenshots go to their own folder, which the Screenshots tab's flat listing never reads, and are cleared on exit */
+    screenshot_nsfw_dir("/data/THC/screenshots", d, sizeof d);
+    CHECK_STR(d, "/data/THC/screenshots/nsfw");
+    if (system("mkdir -p sh_dir2/nsfw/keep && printf x > sh_dir2/nsfw/a.png && printf x > sh_dir2/nsfw/b.jpg && printf x > sh_dir2/nsfw/keep/c.png && printf x > sh_dir2/top.png")) {}
+    CHECK(screenshots_list("sh_dir2", s, 16) == 1);                                    /* only top.png: nothing from nsfw/ */
+    CHECK(files_remove_in_dir("sh_dir2/nsfw") == 2);
+    CHECK(files_remove_in_dir("sh_dir2/nsfw") == 0);                                   /* again: nothing left, safe */
+    CHECK(screenshots_list("sh_dir2/nsfw", s, 16) == 0);
+    FILE *kf = fopen("sh_dir2/nsfw/keep/c.png", "rb");
+    CHECK(kf != NULL);                                                                 /* sub-folders are left alone */
+    if (kf) fclose(kf);
+    FILE *tf = fopen("sh_dir2/top.png", "rb");
+    CHECK(tf != NULL);                                                                 /* and nothing outside the folder */
+    if (tf) fclose(tf);
+    if (system("rm -rf sh_dir2")) {}
+    CHECK(files_remove_in_dir("no_such_dir") == 0);
+
     /* MPV: these three options are THC's, not mpv.conf's */
     CHECK(mpvconf_is_thc_controlled("screenshot-directory"));
     CHECK(mpvconf_is_thc_controlled("screenshot-format"));

@@ -18,7 +18,8 @@ enum {
     VIDEO_EV_ENDED    = 1 << 2, /* the session is over (EOF, quit, error) */
     VIDEO_EV_LOADED   = 1 << 3, /* file loaded, duration known */
     VIDEO_EV_CHANGED  = 1 << 4, /* any observed value changed (redraw) */
-    VIDEO_EV_FILE_ENDED = 1 << 5 /* chain mode: one file finished, the window stays open */
+    VIDEO_EV_FILE_ENDED = 1 << 5, /* chain mode: one file finished, the window stays open */
+    VIDEO_EV_PANIC = 1 << 6       /* the panic key was pressed inside the mpv window */
 };
 
 typedef struct VideoSession {
@@ -51,6 +52,7 @@ typedef struct VideoOptions {
     const char *screenshot_dir;      /* where MPV's s key saves (created if missing); NULL = leave MPV's */
     const char *screenshot_format;   /* "png", "jpg" or "webp" */
     const char *screenshot_template; /* MPV template */
+    const char *panic_key;           /* mpv key name bound to the NSFW panic (script-message thc-panic), NULL = none */
 } VideoOptions;
 
 /* True for "scheme://..." (other than file://). */
@@ -65,6 +67,9 @@ int video_pump(VideoSession *s);
 
 /* Send a raw mpv command string (for audio-only sessions driven by THC). */
 void video_command(VideoSession *s, const char *cmd);
+/* NSFW (#13): while on, the window title, the OSD and screenshot names say just "THC" and screenshots go to
+ * `shot_dir` (if not NULL). Call it for every file loaded, because mpv keeps the values between files. */
+void video_set_masked(VideoSession *s, bool masked, const char *shot_dir);
 void video_set_pause(VideoSession *s, bool pause);
 /* Keep the window on top (or not); only talks to mpv when the value changes. macOS also gets ontop-level. */
 void video_set_ontop(VideoSession *s, bool on, const char *macos_level);

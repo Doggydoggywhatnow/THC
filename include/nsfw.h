@@ -49,6 +49,12 @@ int nsfw_tag_count_state(const NsfwIndex *x, int state);
 /* THE decision. `size` is only used for files. `why` (may be NULL) says which rule decided. */
 bool nsfw_hidden(const NsfwIndex *x, int root, const char *rel, bool is_dir, int64_t size, int *why);
 
+/* May this item leave history, plays or a saved backlog behind? Nothing is recorded for an NSFW item unless the user
+ * turned that on (`record_nsfw`), and never when the portal's history switch for that kind of media is off. */
+bool nsfw_record_allowed(const NsfwIndex *x, bool history_on_for_kind, bool record_nsfw, int root, const char *rel, int64_t size);
+/* The name a thumbnail is cached under: "<hex>" normally, "nsfw/<hex>" for NSFW items (a folder of its own). */
+void nsfw_thumb_name(const char *hexkey, bool nsfw, char *out, size_t cap);
+
 /* Does a name match a rule pattern ("*xxx*", "NSFW")? Case-insensitive. */
 bool nsfw_pattern_match(const char *pattern, const char *name);
 /* Does any rule in a "|"-separated list match any folder or file name along `rel`? */

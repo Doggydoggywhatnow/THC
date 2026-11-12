@@ -8,6 +8,7 @@
  * history. The player bar at the bottom is drawn here too. */
 #include "app.h"
 #include "mediakeys.h"
+#include "mpvconf.h"
 #include "screenshots.h"
 #include "ontop.h"
 #include "audio.h"
@@ -52,6 +53,28 @@ static QueueItem *cur_item(void)
 {
     Queue *q = AQ();
     return q->cur >= 0 && q->cur < q->n ? &q->items[q->cur] : NULL;
+}
+
+/* NSFW (#13): is this item hidden, and should its title be masked on screen? */
+static bool item_is_nsfw(App *a, const QueueItem *it)
+{
+    return a->nsfw && it && nsfw_hidden(a->nsfw, it->root, it->rel, false, it->size, NULL);
+}
+
+bool player_item_masked(App *a, const QueueItem *it)
+{
+    return a->set.nsfw_mask_titles && item_is_nsfw(a, it);
+}
+
+/* What may be drawn for an item: the item itself, or a stand-in with no title, sub-title or picture. */
+const QueueItem *player_display_item(App *a, const QueueItem *it, QueueItem *scratch)
+{
+    if (!player_item_masked(a, it)) return it;
+    *scratch = *it;
+    SDL_strlcpy(scratch->title, "Hidden item", sizeof scratch->title);
+    scratch->sub[0] = 0;
+    scratch->art[0] = 0;
+    return scratch;
 }
 
 static bool video_item_active(const App *a)
@@ -102,7 +125,7 @@ static bool is_paused(const App *a)
 
 static void count_play(App *a, const QueueItem *it, double listened)
 {
-    if (P.play_counted || !settings_history_on(&a->set, it->kind)) return;
+    if (P.play_counted || !app_history_ok(a, it->kind, it->root, it->rel, it->size)) return;
     P.play_counted = true;
     history_record_play(a->hist, it->rel, it->size, it->kind, listened);
     app_history_changed();
@@ -113,7 +136,7 @@ static void save_audio_progress(App *a, bool reached_end)
 {
     QueueItem *it = cur_item();
     if (!it || it->kind == QK_VIDEO || P.ab == BK_NONE) return;
-    if (!settings_history_on(&a->set, it->kind)) return;
+    if (!app_history_ok(a, it->kind, it->root, it->rel, it->size)) return;
     double d = dur_now(a);
     double pos = reached_end && d > 0 ? d : pos_now(a);
     bool resumable = it->kind == QK_BOOK || (d >= a->set.music_resume_min_minutes * 60.0 && a->set.queue_resume_song);
@@ -125,7 +148,7 @@ static void save_audio_progress(App *a, bool reached_end)
 
 static void save_video_progress(App *a)
 {
-    if (!a->play_key[0] || !settings_history_on(&a->set, KIND_VIDEO)) return;
+    if (!a->play_key[0] || !app_history_ok(a, KIND_VIDEO, a->play_root, a->play_key, a->play_size)) return;
     if (a->video.failed && a->video.pos <= 0) return;
     history_save_ex(a->hist, a->play_key, a->play_size, KIND_VIDEO, a->video.pos, a->video.duration,
                     a->set.watched_threshold, a->video.reached_eof);
@@ -139,7 +162,7 @@ static void save_video_progress(App *a)
 static double resume_point(App *a, const QueueItem *it)
 {
     bool want = it->kind == QK_VIDEO ? a->set.queue_resume_video : it->kind == QK_BOOK ? a->set.queue_resume_book : a->set.queue_resume_song;
-    if (!want || !settings_history_on(&a->set, it->kind)) return 0;
+    if (!want || !app_history_ok(a, it->kind, it->root, it->rel, it->size)) return 0;
     HistoryEntry e;
     if (!history_get(a->hist, it->rel, it->size, &e)) return 0;
     if (it->kind == QK_SONG && e.duration < a->set.music_resume_min_minutes * 60.0) return 0;
@@ -184,7 +207,7 @@ static bool start_audio(App *a, const QueueItem *it, double start)
     bool use_mpv = a->have_mpv && (!engine_ok || book);
     char err[256] = "";
     if (use_mpv) {
-        VideoOptions o = { a->mpv_dir, start, true, a->mpv_event, false, a->set.mpv_block_network, NULL, NULL, NULL };
+        VideoOptions o = { a->mpv_dir, start, true, a->mpv_event, false, a->set.mpv_block_network, NULL, NULL, NULL, NULL };
         if (video_play(&P.mpv, &a->mpv, it->path, &o)) {
             P.ab = BK_MPV;
             video_set_volume(&P.mpv, a->set.volume);
@@ -203,7 +226,7 @@ static bool start_audio(App *a, const QueueItem *it, double start)
         SDL_snprintf(err, sizeof err, "This format needs libmpv, which was not found");
     }
     if (P.ab == BK_NONE) {
-        app_toast(a, "Could not play %s: %s", it->title, err);
+        app_toast(a, "Could not play %s: %s", player_item_masked(a, it) ? "a hidden item" : it->title, err);
         return false;
     }
     P.paused = false;
@@ -236,8 +259,10 @@ static bool start_video_window(App *a, const QueueItem *it, double start)
         return false;
     }
     SDL_strlcpy(a->play_key, it->rel, sizeof a->play_key);
+    a->play_root = it->root;
     a->play_size = it->size;
-    SDL_strlcpy(a->play_title, it->title, sizeof a->play_title);
+    bool masked = player_item_masked(a, it);
+    SDL_strlcpy(a->play_title, masked ? "Hidden item" : it->title, sizeof a->play_title);
     bool ok;
     if (a->video.h && a->video.active) {
         ok = video_load(&a->video, it->path, start);
@@ -247,7 +272,9 @@ static bool start_video_window(App *a, const QueueItem *it, double start)
         screenshot_dir_resolve(a->data_dir, a->set.screenshot_dir, shots, sizeof shots);
         VideoOptions o = { a->mpv_dir, start, false, a->mpv_event, true, a->set.mpv_block_network,
                            shots, screenshot_format_name(a->set.screenshot_format),
-                           screenshot_template(a->set.screenshot_template) };
+                           screenshot_template(a->set.screenshot_template), NULL };
+        char pkey[48] = "";
+        if (a->set.nsfw_enabled && mpvconf_key_from_hotkey(a->set.hotkey[ACT_NSFW_PANIC], pkey, sizeof pkey)) o.panic_key = pkey;
         ok = video_play(&a->video, &a->mpv, it->path, &o);
         if (!ok) app_toast(a, "%s", a->video.error);
     }
@@ -257,6 +284,12 @@ static bool start_video_window(App *a, const QueueItem *it, double start)
     }
     P.video_idle = false;
     apply_ontop(a);
+    {   /* NSFW: a fixed window title, no title in the OSD, and screenshots in their own folder */
+        char shots[THC_PATH_MAX], nshots[THC_PATH_MAX + 8];
+        screenshot_dir_resolve(a->data_dir, a->set.screenshot_dir, shots, sizeof shots);
+        SDL_snprintf(nshots, sizeof nshots, "%s/nsfw", shots);
+        video_set_masked(&a->video, masked, item_is_nsfw(a, it) ? nshots : shots);
+    }
     {   /* say so if screenshots cannot be saved, instead of failing silently */
         char shots[THC_PATH_MAX];
         screenshot_dir_resolve(a->data_dir, a->set.screenshot_dir, shots, sizeof shots);
@@ -267,7 +300,8 @@ static bool start_video_window(App *a, const QueueItem *it, double start)
     if (start > 0) {
         char t[32];
         fmt_time(start, t, sizeof t);
-        app_toast(a, "Resuming %s at %s", it->title, t);
+        if (masked) app_toast(a, "Resuming at %s", t);
+        else app_toast(a, "Resuming %s at %s", it->title, t);
     }
     return true;
 }
@@ -317,10 +351,10 @@ static bool start_item(App *a, int qid, int idx)
     P.music_suspended = false;
     if (plan.backend == BACKEND_MPV_AUDIO && it->kind == QK_VIDEO) {
         /* listen-only video from the music queue */
-        VideoOptions o = { a->mpv_dir, start, true, a->mpv_event, false, a->set.mpv_block_network, NULL, NULL, NULL };
+        VideoOptions o = { a->mpv_dir, start, true, a->mpv_event, false, a->set.mpv_block_network, NULL, NULL, NULL, NULL };
         stop_audio(a);
         if (!video_play(&P.mpv, &a->mpv, it->path, &o)) {
-            app_toast(a, "Could not play %s", it->title);
+            app_toast(a, "Could not play %s", player_item_masked(a, it) ? "a hidden item" : it->title);
             return false;
         }
         P.ab = BK_MPV;
@@ -545,31 +579,28 @@ void player_clear_queue(App *a, int qid)
 
 /* ---- NSFW (#13): stopping and queue clean-up ---- */
 
-static bool item_is_nsfw(App *a, const QueueItem *it)
-{
-    return a->nsfw && it && nsfw_hidden(a->nsfw, it->root, it->rel, false, it->size, NULL);
-}
-
 bool player_current_is_nsfw(App *a)
 {
     return item_is_nsfw(a, cur_item());
 }
 
+typedef struct PurgeCtx { App *a; } PurgeCtx;
+static bool purge_pred(void *ud, const QueueItem *it) { return item_is_nsfw(((PurgeCtx *)ud)->a, it); }
+
 /* Take every NSFW item out of both queues and their backlogs. With `stop`, whatever NSFW item is loaded
  * stops first (audio silenced, the video window closed). Safe to call again and again. */
 void player_purge_nsfw(App *a, bool stop)
 {
+    PurgeCtx c = { a };
     for (int qid = 0; qid < QUEUE_COUNT; qid++) {
         Queue *q = &Q[qid];
-        if (stop && P.active == qid && q->cur >= 0 && q->cur < q->n && item_is_nsfw(a, &q->items[q->cur])) {
+        bool loaded_nsfw = P.active == qid && q->cur >= 0 && q->cur < q->n && item_is_nsfw(a, &q->items[q->cur]);
+        if (stop && loaded_nsfw) {
             if (qid == QUEUE_VIDEO) stop_video_window(a); else stop_audio(a);
             P.next_at = 0;
         }
-        for (int i = q->n - 1; i >= 0; i--)
-            if (item_is_nsfw(a, &q->items[i])) {
-                if (P.active == qid && i == q->cur && !stop) continue;      /* playing on: it stays, masked */
-                queue_remove(q, i);
-            }
+        /* without `stop` an NSFW item that is playing keeps playing (masked) and stays in its queue */
+        queue_remove_if(q, purge_pred, &c, (!stop && loaded_nsfw) ? q->cur : -1);
     }
 }
 
@@ -746,6 +777,8 @@ void music_pump(App *a)
         int f = video_pump(&a->video);
         apply_ontop(a);
         QueueItem *it = cur_item();
+        if (f & VIDEO_EV_PANIC) app_nsfw_panic(a);
+        if (!a->video.h) return;
         if (f & (VIDEO_EV_PAUSED | VIDEO_EV_ENDED)) save_video_progress(a);
         else if ((f & VIDEO_EV_PROGRESS) && !P.video_idle) save_video_progress(a);
         if (f & VIDEO_EV_FILE_ENDED) {
@@ -906,7 +939,7 @@ static void media_pump(App *a)
             SDL_strlcpy(album, sep + 3, sizeof album);
         }
     }
-    mediakeys_build(&np, &a->set, kind, have_item(a), !is_paused(a), it ? it->title : "", artist, album,
+    mediakeys_build(&np, &a->set, kind, have_item(a), item_is_nsfw(a, it), !is_paused(a), it ? it->title : "", artist, album,
                     it ? it->art : "", pos_now(a), dur_now(a));
     if (a->set.mediakeys_mode != KEYS_GLOBAL) np.claimed = false;   /* "focused": only THC's own window */
     if (!mb_have_last || memcmp(&np, &mb_last, sizeof np) != 0) {
@@ -950,7 +983,8 @@ void music_bar(App *a)
     SDL_FRect bar = { 0, ui->h - h, (float)ui->w, h };
     ui_fill(ui, bar, t->high_contrast ? t->bg : with_alpha(color_mix(t->bg, t->surface, 0.6f), 250), 0);
     ui_fill(ui, (SDL_FRect){ 0, bar.y, (float)ui->w, 1 }, with_alpha(t->border, 200), 0);
-    QueueItem *it = cur_item();
+    QueueItem scratch;
+    const QueueItem *it = player_display_item(a, cur_item(), &scratch);
     bool playing = P.ab != BK_NONE && !P.paused;
     float pad = dp(ui, 20);
 

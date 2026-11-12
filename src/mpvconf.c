@@ -182,3 +182,36 @@ bool mpvconf_set_key(const char *text, const char *key, const char *value, char 
     #undef PUT
     return true;
 }
+
+bool mpvconf_key_from_hotkey(const char *hk, char *out, size_t cap)
+{
+    if (!hk || !*hk || cap < 2) return false;
+    bool ctrl = false, shift = false, alt = false, meta = false;
+    const char *p = hk;
+    for (;;) {
+        if (!strncmp(p, "Ctrl+", 5)) { ctrl = true; p += 5; }
+        else if (!strncmp(p, "Shift+", 6)) { shift = true; p += 6; }
+        else if (!strncmp(p, "Alt+", 4)) { alt = true; p += 4; }
+        else if (!strncmp(p, "Cmd+", 4) || !strncmp(p, "Meta+", 5) || !strncmp(p, "Super+", 6)) { meta = true; p += p[0] == 'C' ? 4 : p[0] == 'M' ? 5 : 6; }
+        else break;
+    }
+    if (!*p) return false;
+    char key[32];
+    static const char *const names[][2] = {
+        { "Space", "SPACE" }, { "Return", "ENTER" }, { "Enter", "ENTER" }, { "Escape", "ESC" }, { "Tab", "TAB" },
+        { "Backspace", "BS" }, { "Delete", "DEL" }, { "Insert", "INS" }, { "Home", "HOME" }, { "End", "END" },
+        { "PageUp", "PGUP" }, { "PageDown", "PGDWN" }, { "Up", "UP" }, { "Down", "DOWN" }, { "Left", "LEFT" }, { "Right", "RIGHT" },
+        { NULL, NULL }
+    };
+    const char *mapped = NULL;
+    for (int i = 0; names[i][0]; i++)
+        if (!strcmp(p, names[i][0])) mapped = names[i][1];
+    if (mapped) snprintf(key, sizeof key, "%s", mapped);
+    else if (strlen(p) == 1 && isalpha((unsigned char)p[0])) {
+        key[0] = shift ? (char)toupper((unsigned char)p[0]) : (char)tolower((unsigned char)p[0]);   /* mpv: shift is the capital letter */
+        key[1] = 0;
+        shift = false;
+    } else snprintf(key, sizeof key, "%s", p);                                                 /* F-keys, digits, symbols */
+    int n = snprintf(out, cap, "%s%s%s%s%s", meta ? "Meta+" : "", ctrl ? "Ctrl+" : "", alt ? "Alt+" : "", shift ? "Shift+" : "", key);
+    return n > 0 && (size_t)n < cap;
+}

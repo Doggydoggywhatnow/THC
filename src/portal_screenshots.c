@@ -5,15 +5,26 @@
 
 #define MAX_SHOTS 600
 
-static ShotInfo g_shots[MAX_SHOTS];
-static int g_n;
-static Uint64 g_loaded_at;
-static int g_sel = -1;                   /* the picture shown large, or -1 */
+/* Two views of the same code: the Screenshots tab, and the NSFW portal's own folder (screenshots/nsfw). */
+static ShotInfo g_shots_s[2][MAX_SHOTS];
+static int g_n_s[2];
+static Uint64 g_loaded_s[2];
+static int g_sel_s[2] = { -1, -1 };      /* the picture shown large, or -1 */
 static char g_pending_delete[THC_PATH_MAX];
+static char g_pending_root[THC_PATH_MAX];
+static int g_mode;                       /* 0 = normal, 1 = NSFW */
+#define g_shots g_shots_s[g_mode]
+#define g_n g_n_s[g_mode]
+#define g_loaded_at g_loaded_s[g_mode]
+#define g_sel g_sel_s[g_mode]
 
 static void shots_dir(const App *a, char *out, size_t cap)
 {
     screenshot_dir_resolve(a->data_dir, a->set.screenshot_dir, out, cap);
+    if (g_mode == 1) {
+        size_t n = SDL_strlen(out);
+        SDL_snprintf(out + n, cap - n, "/nsfw");
+    }
 }
 
 static void refresh(App *a, bool force)
@@ -27,8 +38,18 @@ static void refresh(App *a, bool force)
     if (g_sel >= g_n) g_sel = -1;
 }
 
+bool screenshots_back_nsfw(void)
+{
+    g_mode = 1;
+    bool r = g_sel >= 0;
+    if (r) g_sel = -1;
+    g_mode = 0;
+    return r;
+}
+
 bool screenshots_back(void)
 {
+    g_mode = 0;
     if (g_sel < 0) return false;
     g_sel = -1;
     return true;
@@ -36,6 +57,7 @@ bool screenshots_back(void)
 
 void screenshots_confirmed_delete(App *a)
 {
+    g_mode = g_pending_root[0] == 'n' ? 1 : 0;
     char dir[THC_PATH_MAX];
     shots_dir(a, dir, sizeof dir);
     if (screenshot_delete(dir, g_pending_delete)) {
@@ -87,6 +109,7 @@ static void viewer(App *a, SDL_FRect area)
     bx += dp(ui, 182);
     if (ui_button(ui, ui_id("shot-delete"), (SDL_FRect){ bx, top, dp(ui, 150), dp(ui, 44) }, "Delete", ICON_CLOSE, false)) {
         SDL_strlcpy(g_pending_delete, path, sizeof g_pending_delete);
+        g_pending_root[0] = g_mode == 1 ? 'n' : 'm';
         app_confirm(a, CONFIRM_DELETE_SHOT, 0, "Delete this screenshot?",
                     "The picture is removed from THC's screenshots folder. This cannot be undone.", "Delete");
     }
@@ -111,7 +134,32 @@ static void viewer(App *a, SDL_FRect area)
     ui_text_fit(ui, FONT_BOLD, TS_BODY, area.x + pad, box.y + box.h + dp(ui, 14), area.w - 2 * pad, t->text, line);
 }
 
+static void portal_screenshots_impl(App *a, SDL_FRect area);
+
 void portal_screenshots(App *a, SDL_FRect area)
+{
+    g_mode = 0;
+    portal_screenshots_impl(a, area);
+}
+
+/* The NSFW portal's Screenshots sub-tab: only the pictures taken while an NSFW item played. */
+void portal_screenshots_nsfw(App *a, SDL_FRect area)
+{
+    g_mode = 1;
+    portal_screenshots_impl(a, area);
+    g_mode = 0;
+}
+
+int screenshots_nsfw_count(App *a)
+{
+    g_mode = 1;
+    refresh(a, false);
+    int n = g_n;
+    g_mode = 0;
+    return n;
+}
+
+static void portal_screenshots_impl(App *a, SDL_FRect area)
 {
     Ui *ui = &a->ui;
     const Theme *t = &ui->th;
@@ -124,7 +172,7 @@ void portal_screenshots(App *a, SDL_FRect area)
                      "Press S while a video plays in MPV and the picture is saved here, in THC's own folder (%s), never next to your videos.",
                      dir);
         bool open = false;
-        draw_empty(a, area, ICON_CAMERA, "No screenshots yet", body, "Open folder", &open);
+        draw_empty(a, area, g_mode == 1 ? ICON_BEER : ICON_CAMERA, "No screenshots yet", body, "Open folder", &open);
         if (open) open_dir(a);
         ui->needs_redraw = true;       /* keep looking for new pictures */
         return;
@@ -137,7 +185,7 @@ void portal_screenshots(App *a, SDL_FRect area)
     float x = area.x + pad, w = area.w - 2 * pad;
     float off = ui_scroll_begin(ui, ui_id("shots-page"), area, false);
     float y = area.y + dp(ui, 28) - off;
-    ui_text(ui, FONT_BOLD, TS_H1, x, y, t->text, "Screenshots");
+    ui_text(ui, FONT_BOLD, TS_H1, x, y, t->text, g_mode == 1 ? "Screenshots (NSFW)" : "Screenshots");
     y += ui_line_h(ui, TS_H1);
     char sub[64];
     SDL_snprintf(sub, sizeof sub, "%d picture%s, newest first", g_n, g_n == 1 ? "" : "s");

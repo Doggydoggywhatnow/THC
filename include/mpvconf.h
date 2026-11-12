@@ -41,4 +41,7 @@ bool mpvconf_is_thc_controlled(const char *name);
 bool mpvconf_get_key(const char *text, const char *key, char *value, size_t cap);
 bool mpvconf_set_key(const char *text, const char *key, const char *value, char *out, size_t cap);
 
+/* THC's hotkey text ("Ctrl+Shift+X") as an mpv key name ("Ctrl+X"). False if it cannot be expressed. */
+bool mpvconf_key_from_hotkey(const char *hotkey, char *out, size_t cap);
+
 #endif

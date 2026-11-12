@@ -70,6 +70,18 @@ bool queue_remove(Queue *q, int index)
     return true;
 }
 
+int queue_remove_if(Queue *q, bool (*pred)(void *ud, const QueueItem *it), void *ud, int keep)
+{
+    int removed = 0;
+    for (int i = q->n - 1; i >= 0; i--) {
+        if (i == keep || !pred(ud, &q->items[i])) continue;
+        queue_remove(q, i);
+        if (keep > i) keep--;
+        removed++;
+    }
+    return removed;
+}
+
 bool queue_move(Queue *q, int from, int to)
 {
     if (from < 0 || from >= q->n || to < 0 || to >= q->n) return false;

@@ -239,6 +239,10 @@ static void goto_item(App *a, const QueueItem *it)
 
 static void mark_item(App *a, const QueueItem *it, bool played)
 {
+    if (!app_history_ok(a, it->kind, it->root, it->rel, it->size)) {      /* NSFW: nothing is recorded */
+        app_toast(a, played ? "Marked as played" : "Marked as not played");
+        return;
+    }
     if (it->kind == QK_VIDEO || it->kind == QK_BOOK) {
         history_set_watched(a->hist, it->rel, it->size, played);
     } else if (played) {
@@ -513,7 +517,8 @@ void queue_panel(App *a, SDL_FRect r)
     g_row_focus_id = 0;
     int drop = -1;
     for (int i = 0; i < q->n; i++) {
-        QueueItem *it = &q->items[i];
+        QueueItem scratch;
+        const QueueItem *it = player_display_item(a, &q->items[i], &scratch);   /* NSFW titles are masked here, too */
         SDL_FRect row = { x, y - off + i * rh, w, rh - dp(ui, 4) };
         if (row.y + row.h < view.y - rh || row.y > view.y + view.h + rh) {
             /* off screen: still counts for the content height */
@@ -785,7 +790,7 @@ void queue_backlog_save(App *a)
         for (int i = start; i < end && n < 500; i++) {
             const QueueItem *it = &q->items[i];
             if (!it->played && i != q->cur) continue;
-            if (!settings_history_on(&a->set, it->kind)) continue;     /* off for that portal: never saved */
+            if (!app_history_ok(a, it->kind, it->root, it->rel, it->size)) continue;     /* off for that portal, or NSFW: never saved */
             SDL_strlcpy(rows[n].path, it->rel, sizeof rows[n].path);
             rows[n].size = it->size;
             rows[n].kind = it->kind;

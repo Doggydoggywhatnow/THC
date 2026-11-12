@@ -63,5 +63,19 @@ int main(void)
     CHECK(mpvconf_set_key("", "layout", "slimbox", out, sizeof out));
     CHECK_STR(out, "layout=slimbox\n");
     CHECK(!mpvconf_set_key("a=b\n", "layout", "topbar", out, 8));   /* does not fit */
+    /* a hotkey as an mpv key name (the NSFW panic key is bound inside mpv's window) */
+    {
+        char k[48];
+        CHECK(mpvconf_key_from_hotkey("Ctrl+Shift+X", k, sizeof k) && !strcmp(k, "Ctrl+X"));
+        CHECK(mpvconf_key_from_hotkey("Ctrl+x", k, sizeof k) && !strcmp(k, "Ctrl+x"));
+        CHECK(mpvconf_key_from_hotkey("X", k, sizeof k) && !strcmp(k, "x"));
+        CHECK(mpvconf_key_from_hotkey("Shift+X", k, sizeof k) && !strcmp(k, "X"));
+        CHECK(mpvconf_key_from_hotkey("Alt+F9", k, sizeof k) && !strcmp(k, "Alt+F9"));
+        CHECK(mpvconf_key_from_hotkey("Ctrl+Shift+F9", k, sizeof k) && !strcmp(k, "Ctrl+Shift+F9"));
+        CHECK(mpvconf_key_from_hotkey("Ctrl+Space", k, sizeof k) && !strcmp(k, "Ctrl+SPACE"));
+        CHECK(mpvconf_key_from_hotkey("Escape", k, sizeof k) && !strcmp(k, "ESC"));
+        CHECK(!mpvconf_key_from_hotkey("", k, sizeof k) && !mpvconf_key_from_hotkey("Ctrl+", k, sizeof k) && !mpvconf_key_from_hotkey(NULL, k, sizeof k));
+        CHECK(!mpvconf_key_from_hotkey("Ctrl+Shift+X", k, 4));                  /* too small a buffer */
+    }
     TEST_DONE();
 }

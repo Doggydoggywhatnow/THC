@@ -2,6 +2,8 @@
  * filtered copy without NSFW items; the NSFW portal reads a->nlib, which holds only them. Both are rebuilt from
  * a->full after every scan and every tag change, so no view has its own filter to forget (#13). */
 #include "app.h"
+#include "pin.h"
+#include "screenshots.h"
 
 typedef struct FilterCtx { App *a; int root; } FilterCtx;
 
@@ -183,6 +185,9 @@ void app_nsfw_undo(App *a)
 
 void app_nsfw_frame(App *a)
 {
+    /* idle long enough: lock again (only with a PIN set) */
+    if (a->nsfw_unlocked && a->set.nsfw_pin_hash[0] && nsfw_should_relock(a->ui.time, a->last_input, a->set.nsfw_relock_minutes))
+        app_nsfw_lock(a);
     if (a->undo.active && a->ui.time > a->undo.until) a->undo.active = false;
     if (a->nsfw_refresh) {
         a->nsfw_refresh = false;
@@ -249,4 +254,45 @@ void app_nsfw_panic(App *a)
     if (a->screen == SCREEN_NSFW) app_go(a, a->last_portal ? a->last_portal : SCREEN_VIDEO);
     app_nsfw_lock(a);
     a->toast[0] = 0;
+}
+
+/* ------------------------------------------------------------------------ */
+/* History: nothing is recorded for NSFW items unless the user turned it on    */
+/* ------------------------------------------------------------------------ */
+
+bool app_history_ok(App *a, int kind, int root, const char *rel, int64_t size)
+{
+    return nsfw_record_allowed(a->nsfw, settings_history_on(&a->set, kind), a->set.nsfw_record_history, root, rel, size);
+}
+
+int app_root_of(const App *a, const FsNode *n)
+{
+    const FsNode *top = n;
+    while (top && top->parent) top = top->parent;
+    for (int r = 0; r < ROOT_COUNT; r++)
+        if (top && (a->lib.root[r] == top || a->nlib.root[r] == top || a->full.root[r] == top)) return r;
+    return ROOT_VIDEO;
+}
+
+bool app_history_ok_node(App *a, int kind, const FsNode *n)
+{
+    char rel[THC_PATH_MAX];
+    fs_relpath(n, rel, sizeof rel);
+    return app_history_ok(a, kind, app_root_of(a, n), rel, n->size);
+}
+
+/* ------------------------------------------------------------------------ */
+/* Clean-up at exit                                                           */
+/* ------------------------------------------------------------------------ */
+
+/* NSFW thumbnails and screenshots are stored apart and removed when THC exits (setting). */
+void app_nsfw_cleanup(App *a)
+{
+    if (!a->set.nsfw_clear_thumbs_on_exit) return;
+    char d[THC_PATH_MAX], n[THC_PATH_MAX + 8];
+    SDL_snprintf(d, sizeof d, "%sthumbs/nsfw", a->data_dir);
+    files_remove_in_dir(d);
+    screenshot_dir_resolve(a->data_dir, a->set.screenshot_dir, d, sizeof d);
+    screenshot_nsfw_dir(d, n, sizeof n);
+    files_remove_in_dir(n);
 }

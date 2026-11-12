@@ -63,6 +63,7 @@ typedef struct App {
     /* video playback */
     VideoSession video;
     char play_key[THC_PATH_MAX];   /* history key of the playing file */
+    int play_root;
     Sint64 play_size;
     char play_title[256];
 
@@ -74,6 +75,7 @@ typedef struct App {
     VideoLibrary nvlib;            /* shows and movies parsed from nlib */
     NsfwIndex *nsfw;               /* the tags */
     bool nsfw_view;                /* lib, vlib, the navigation stacks and lib_version are swapped with the NSFW ones */
+    double last_input;             /* when the user last did anything (for the NSFW auto-relock) */
     bool nsfw_unlocked;            /* the NSFW portal is open (no PIN, or the PIN was entered) */
     int nsfw_sub;                  /* 0 video, 1 music, 2 audiobooks */
     Uint64 nlib_version;
@@ -120,8 +122,9 @@ void app_toast(App *a, const char *fmt, ...);
 void app_export_history(App *a, bool json);
 enum { CONFIRM_CLEAR_HISTORY = 1, CONFIRM_CLEAR_QUEUE, CONFIRM_RESTORE, CONFIRM_DELETE_SHOT, CONFIRM_OPEN_NSFW };
 bool screenshots_back(void);
+bool screenshots_back_nsfw(void);
 void screenshots_confirmed_delete(App *a);
-enum { DLG_BACKUP = 100, DLG_RESTORE };   /* folder dialogs that are not a library folder */
+enum { DLG_BACKUP = 100, DLG_RESTORE, DLG_NSFW_EXPORT, DLG_NSFW_IMPORT };   /* folder dialogs that are not a library folder */
 void app_pick_backup_folder(App *a, bool restore);
 void app_confirm(App *a, int action, int arg, const char *title, const char *body, const char *yes);
 void app_save_settings(App *a);
@@ -154,6 +157,8 @@ void player_close_video(App *a);
 void player_clear_queue(App *a, int qid);
 bool player_has_item(const App *a);
 bool player_current_is_nsfw(App *a);
+bool player_item_masked(App *a, const QueueItem *it);
+const QueueItem *player_display_item(App *a, const QueueItem *it, QueueItem *scratch);
 void player_purge_nsfw(App *a, bool stop);
 bool player_is_paused(const App *a);
 double player_position(const App *a);
@@ -258,6 +263,8 @@ void screen_setup(App *a);
 void portal_video(App *a, SDL_FRect area);
 void portal_music(App *a, SDL_FRect area);
 void portal_screenshots(App *a, SDL_FRect area);
+void portal_screenshots_nsfw(App *a, SDL_FRect area);
+int screenshots_nsfw_count(App *a);
 void portal_books(App *a, SDL_FRect area);
 void screen_settings(App *a, SDL_FRect area);
 
@@ -274,6 +281,10 @@ void app_library_changed(App *a);         /* after a scan or a tag change: rebui
 void app_free_library(App *a);
 bool app_nsfw_hidden(App *a, int root, const FsNode *n);   /* the shared check, on a node of a->full */
 void app_nsfw_shutdown(App *a);
+void app_nsfw_cleanup(App *a);
+bool app_history_ok(App *a, int kind, int root, const char *rel, int64_t size);   /* may this item be recorded? */
+int app_root_of(const App *a, const FsNode *n);
+bool app_history_ok_node(App *a, int kind, const FsNode *n);
 bool app_nsfw_tab_visible(const App *a);
 void app_nsfw_view_enter(App *a);         /* swap in the NSFW trees and navigation: the portal screens then show NSFW items */
 void app_nsfw_view_leave(App *a);
@@ -283,6 +294,8 @@ void app_nsfw_set_tab_hidden(App *a, bool hidden);
 bool app_nsfw_hotkey(App *a, Action act);
 void app_nsfw_frame(App *a);              /* once per frame, before drawing: refilter if a tag changed */
 void app_nsfw_lock(App *a);
+void app_nsfw_export_tags(App *a);
+void app_nsfw_import_tags(App *a);
 void app_nsfw_panic(App *a);
 void portal_nsfw(App *a, SDL_FRect area);
 void chrome_nsfw_tab_menu(App *a, float x, float y);   /* right-click menu on the NSFW tab */

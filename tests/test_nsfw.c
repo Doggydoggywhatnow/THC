@@ -1,5 +1,8 @@
 #include "library.h"
 #include "nsfw.h"
+#include "pin.h"
+#include "queue.h"
+#include "settings.h"
 #include "test_util.h"
 
 #include <stdlib.h>
@@ -16,6 +19,12 @@ static bool hidden_cb(void *ud, const FsNode *n)
     char rel[512];
     fs_relpath(n, rel, sizeof rel);
     return nsfw_hidden((const NsfwIndex *)ud, 0, rel, n->dir, n->size, NULL);
+}
+
+struct PCtx { NsfwIndex *x; };
+static bool nsfw_queue_pred(void *ud, const QueueItem *it)
+{
+    return nsfw_hidden(((struct PCtx *)ud)->x, it->root, it->rel, false, it->size, NULL);
 }
 
 static NsfwIndex *make(bool enabled)
@@ -220,5 +229,83 @@ int main(void)
     }
     CHECK(hits == 26000);
     nsfw_index_free(big);
+
+    /* ---- 6.5 leaks ---- */
+    NsfwIndex *L = make(true);
+    nsfw_tag(L, NULL, 0, NSFW_SCOPE_FOLDER, "Shows/Secret", 0, 1);
+    nsfw_tag(L, NULL, 1, NSFW_SCOPE_FOLDER, "Artist/Hidden Album", 0, 1);
+    /* history, plays and backlog: not recorded for NSFW items unless the user turned it on */
+    CHECK(!nsfw_record_allowed(L, true, false, 0, "Shows/Secret/e1.mkv", 10));
+    CHECK(nsfw_record_allowed(L, true, true, 0, "Shows/Secret/e1.mkv", 10));          /* the user's setting */
+    CHECK(nsfw_record_allowed(L, true, false, 0, "Shows/Plain/e1.mkv", 10));          /* normal items are unaffected */
+    CHECK(!nsfw_record_allowed(L, false, true, 0, "Shows/Plain/e1.mkv", 10));         /* the portal's own history switch still rules */
+    CHECK(nsfw_record_allowed(NULL, true, false, 0, "x.mkv", 1));
+    NsfwConfig offc = { .enabled = false };
+    nsfw_index_config(L, &offc);
+    CHECK(nsfw_record_allowed(L, true, false, 0, "Shows/Secret/e1.mkv", 10));          /* portal off: nothing special */
+    nsfw_index_config(L, &on);
+    /* thumbnails are cached in a folder of their own */
+    char tn[40];
+    nsfw_thumb_name("0123456789abcdef", false, tn, sizeof tn);
+    CHECK_STR(tn, "0123456789abcdef");
+    nsfw_thumb_name("0123456789abcdef", true, tn, sizeof tn);
+    CHECK_STR(tn, "nsfw/0123456789abcdef");
+    /* panic: every NSFW item leaves the queue, the played ones above the current item and the upcoming ones below */
+    {
+        Queue q;
+        queue_init(&q, QUEUE_MUSIC);
+        const char *paths[] = { "Artist/Fine/a.mp3", "Artist/Hidden Album/b.mp3", "Artist/Fine/c.mp3", "Artist/Hidden Album/d.mp3",
+                                "Artist/Fine/e.mp3", "Artist/Hidden Album/f.mp3" };
+        for (int i = 0; i < 6; i++) {
+            QueueItem it;
+            memset(&it, 0, sizeof it);
+            it.kind = QK_SONG;
+            it.root = 1;
+            snprintf(it.rel, sizeof it.rel, "%s", paths[i]);
+            it.size = 100 + i;
+            queue_add(&q, &it, false);
+        }
+        queue_set_current(&q, 3);                                   /* d.mp3 is "playing": an NSFW item */
+        struct PCtx pc = { L };
+        /* a panic stops the item first, so it too is removed (keep = -1) */
+        int gone = queue_remove_if(&q, nsfw_queue_pred, &pc, -1);
+        CHECK(gone == 3 && q.n == 3);
+        for (int i = 0; i < q.n; i++) CHECK(!strstr(q.items[i].rel, "Hidden"));
+        CHECK(q.cur >= -1 && q.cur < q.n);
+        CHECK(queue_remove_if(&q, nsfw_queue_pred, &pc, -1) == 0 && q.n == 3);   /* pressing it again changes nothing */
+        /* without a stop, an NSFW item that keeps playing is kept (masked) */
+        queue_free(&q);
+        queue_init(&q, QUEUE_MUSIC);
+        for (int i = 0; i < 6; i++) {
+            QueueItem it;
+            memset(&it, 0, sizeof it);
+            it.kind = QK_SONG;
+            it.root = 1;
+            snprintf(it.rel, sizeof it.rel, "%s", paths[i]);
+            queue_add(&q, &it, false);
+        }
+        queue_set_current(&q, 3);
+        CHECK(queue_remove_if(&q, nsfw_queue_pred, &pc, 3) == 2 && q.n == 4);
+        CHECK(q.cur >= 0 && strstr(q.items[q.cur].rel, "d.mp3"));
+        queue_free(&q);
+    }
+    /* the PIN is never in settings.ini; only the salted hash is */
+    {
+        Settings st;
+        settings_defaults(&st);
+        uint8_t salt[PIN_SALT_BYTES] = { 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 1, 2, 3, 4, 5, 6 };
+        pin_make("hunter2-secret", salt, st.nsfw_pin_salt, st.nsfw_pin_hash);
+        CHECK(settings_save(&st, "nsfw_pin_test.ini"));
+        char buf[20000] = "";
+        FILE *pf = fopen("nsfw_pin_test.ini", "rb");
+        if (pf) { size_t got = fread(buf, 1, sizeof buf - 1, pf); buf[got] = 0; fclose(pf); }
+        CHECK(!strstr(buf, "hunter2") && strstr(buf, st.nsfw_pin_hash) && strstr(buf, st.nsfw_pin_salt));
+        Settings back;
+        settings_defaults(&back);
+        CHECK(settings_load(&back, "nsfw_pin_test.ini") && pin_verify("hunter2-secret", back.nsfw_pin_salt, back.nsfw_pin_hash));
+        CHECK(!pin_verify("hunter3", back.nsfw_pin_salt, back.nsfw_pin_hash));
+        remove("nsfw_pin_test.ini");
+    }
+    nsfw_index_free(L);
     TEST_DONE();
 }

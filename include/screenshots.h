@@ -31,4 +31,9 @@ bool screenshot_path_in_dir(const char *dir, const char *path);
 /* Delete a screenshot if the path check passes. */
 bool screenshot_delete(const char *dir, const char *path);
 
+/* <screenshots folder>/nsfw: where pictures taken while an NSFW item plays go. */
+void screenshot_nsfw_dir(const char *dir, char *out, size_t cap);
+/* Delete the plain files directly inside `dir` (not sub-folders). Returns how many went. */
+int files_remove_in_dir(const char *dir);
+
 #endif

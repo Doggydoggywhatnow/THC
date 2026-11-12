@@ -25,7 +25,7 @@ static void put(char *dst, size_t cap, const char *src)
     dst[n] = 0;
 }
 
-void mediakeys_build(NowPlaying *np, const Settings *s, int kind, bool has_item, bool playing, const char *title,
+void mediakeys_build(NowPlaying *np, const Settings *s, int kind, bool has_item, bool nsfw, bool playing, const char *title,
                      const char *artist, const char *album, const char *art, double position, double length)
 {
     memset(np, 0, sizeof *np);
@@ -35,6 +35,10 @@ void mediakeys_build(NowPlaying *np, const Settings *s, int kind, bool has_item,
     np->position = position;
     np->length = length;
     if (!np->claimed) return;
+    if (nsfw) {                                     /* never a title, artist, album or picture */
+        put(np->title, sizeof np->title, "Playing");
+        return;
+    }
     if (!mediakeys_shares(s, kind)) {
         put(np->title, sizeof np->title, "THC");        /* the system just sees THC */
         return;

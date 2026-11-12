@@ -1757,7 +1757,7 @@ bool ui_segmented(Ui *ui, Uint32 id, SDL_FRect r, const char *label, const char 
     return changed;
 }
 
-bool ui_textfield(Ui *ui, Uint32 id, SDL_FRect r, char *buf, size_t cap, const char *placeholder)
+static bool textfield_impl(Ui *ui, Uint32 id, SDL_FRect r, char *buf, size_t cap, const char *placeholder, bool mask)
 {
     UiItemState st = ui_item(ui, id, r);
     const Theme *t = &ui->th;
@@ -1787,16 +1787,35 @@ bool ui_textfield(Ui *ui, Uint32 id, SDL_FRect r, char *buf, size_t cap, const c
     float lh = ui_line_h(ui, TS_BODY);
     float y = r.y + (r.h - lh) / 2;
     ui_clip_push(ui, (SDL_FRect){ r.x + pad, r.y, r.w - 2 * pad, r.h });
-    float w = ui_text_w(ui, FONT_REGULAR, TS_BODY, buf);
+    const char *shown = buf;
+    char stars[256];
+    if (mask) {                                   /* a PIN is never drawn */
+        size_t n = 0;
+        for (const char *p = buf; *p && n < sizeof stars - 1; p++)
+            if (((unsigned char)*p & 0xC0) != 0x80) stars[n++] = '*';
+        stars[n] = 0;
+        shown = stars;
+    }
+    float w = ui_text_w(ui, FONT_REGULAR, TS_BODY, shown);
     float x = r.x + pad;
     if (w > r.w - 2 * pad - dp(ui, 4)) x -= w - (r.w - 2 * pad - dp(ui, 4)); /* keep the end visible */
-    if (buf[0]) ui_text(ui, FONT_REGULAR, TS_BODY, x, y, t->text, buf);
+    if (buf[0]) ui_text(ui, FONT_REGULAR, TS_BODY, x, y, t->text, shown);
     else if (placeholder) ui_text(ui, FONT_REGULAR, TS_BODY, x, y, t->text_dim, placeholder);
     if (st.focused && fmodf((float)ui->time, 1.0f) < 0.6f)
         ui_fill(ui, (SDL_FRect){ x + (buf[0] ? w : 0) + 1, y, dp(ui, 2), lh }, t->accent, 0);
     if (st.focused) ui->needs_redraw = true;
     ui_clip_pop(ui);
     return enter;
+}
+
+bool ui_textfield(Ui *ui, Uint32 id, SDL_FRect r, char *buf, size_t cap, const char *placeholder)
+{
+    return textfield_impl(ui, id, r, buf, cap, placeholder, false);
+}
+
+bool ui_passfield(Ui *ui, Uint32 id, SDL_FRect r, char *buf, size_t cap, const char *placeholder)
+{
+    return textfield_impl(ui, id, r, buf, cap, placeholder, true);
 }
 
 void ui_progress(Ui *ui, SDL_FRect r, float frac, Color fill)

@@ -213,11 +213,46 @@ int main(void)
               !video_is_url("relative/a.mp4") && !video_is_url(""));
     }
 
+    /* 8. NSFW (#13): a fixed window title and OSD, screenshots in their own folder, the panic key inside mpv's window */
+    write_file("mpvcfg_thc/mpv.conf", "ao=null\ntitle=my-title\nforce-media-title=my-forced\nscreenshot-directory=/tmp\n");
+    {
+        VideoSession s;
+        VideoOptions o = { "mpvcfg_thc", 0, true, 0, false, true, "mpvcfg_shots", "png", "%{media-title}-%P", "Ctrl+X" };
+        CHECK(video_play(&s, &api, THC_TEST_DATA "/tone.mp3", &o));
+        if (s.h) {
+            CHECK(binding_has(&s, "Ctrl+X", "thc-panic"));                       /* bound while the portal is on */
+            video_set_masked(&s, true, "mpvcfg_shots/nsfw");
+            CHECK(str_is(&s, "title", "THC"));
+            CHECK(str_is(&s, "force-media-title", "THC"));                      /* the OSD and screenshot names, too */
+            char *sd = api.get_property_string(s.h, "screenshot-directory");
+            CHECK(sd && strstr(sd, "mpvcfg_shots/nsfw"));
+            if (sd) api.free(sd);
+            video_set_masked(&s, false, "mpvcfg_shots");                         /* the next, normal file: back to normal */
+            CHECK(str_is(&s, "title", "${media-title} - THC"));
+            CHECK(str_is(&s, "force-media-title", ""));
+            /* the panic key's message comes back as an event */
+            video_command(&s, "script-message thc-panic");
+            int flags = 0;
+            for (int i = 0; i < 40 && !(flags & VIDEO_EV_PANIC); i++) { SDL_Delay(25); flags |= video_pump(&s); }
+            CHECK(flags & VIDEO_EV_PANIC);
+            video_command(&s, "script-message something-else");
+            flags = video_pump(&s);
+            CHECK(!(flags & VIDEO_EV_PANIC));
+            video_stop(&s);
+        }
+        /* with the portal off there is no panic binding at all */
+        VideoOptions off = { "mpvcfg_thc", 0, true, 0, false, true, "mpvcfg_shots", "png", "%{media-title}-%P", NULL };
+        CHECK(video_play(&s, &api, THC_TEST_DATA "/tone.mp3", &off));
+        if (s.h) { CHECK(!binding_has(&s, "thc-panic", NULL)); video_stop(&s); }
+        SDL_RemovePath("mpvcfg_shots/nsfw");
+        SDL_RemovePath("mpvcfg_shots");
+    }
+
     /* 7. screenshots go to THC's folder, format and template, even when mpv.conf says otherwise (#25) */
     write_file("mpvcfg_thc/mpv.conf", "ao=null\nscreenshot-directory=/tmp\nscreenshot-format=jpg\nscreenshot-template=other\n");
     {
         VideoSession s;
-        VideoOptions o = { "mpvcfg_thc", 0, true, 0, false, true, "mpvcfg_shots/nested", "webp", "%{media-title}-%P" };
+        VideoOptions o = { "mpvcfg_thc", 0, true, 0, false, true, "mpvcfg_shots/nested", "webp", "%{media-title}-%P", NULL };
         CHECK(video_play(&s, &api, THC_TEST_DATA "/tone.mp3", &o));
         if (s.h) {
             char *v = api.get_property_string(s.h, "screenshot-directory");

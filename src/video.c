@@ -139,7 +139,7 @@ bool video_play(VideoSession *s, const MpvApi *api, const char *path, const Vide
         char buf[64];
         SDL_snprintf(buf, sizeof buf, "%.3f", opt->start > 1.0 ? opt->start : 0.0);
         api->set_option_string(s->h, "start", buf);
-        if (SDL_getenv("THC_MPV_LOG")) SDL_Log("THC: starting %s at %s s", path, buf);
+        if (SDL_getenv("THC_MPV_LOG")) SDL_Log("THC: starting a file at %s s", buf);   /* never the name: it could be NSFW */
     }
 
     int err = api->initialize(s->h);
@@ -157,6 +157,11 @@ bool video_play(VideoSession *s, const MpvApi *api, const char *path, const Vide
             api->set_property_string(s->h, "screenshot-directory", opt->screenshot_dir);
             if (opt->screenshot_format) api->set_property_string(s->h, "screenshot-format", opt->screenshot_format);
             if (opt->screenshot_template) api->set_property_string(s->h, "screenshot-template", opt->screenshot_template);
+        }
+        if (opt->panic_key && *opt->panic_key) {   /* the NSFW panic key works inside mpv's window, too */
+            char cmd[160];
+            SDL_snprintf(cmd, sizeof cmd, "keybind %s \"script-message thc-panic\"", opt->panic_key);
+            api->command_string(s->h, cmd);
         }
         char sb[64];
         SDL_snprintf(sb, sizeof sb, "%.3f", opt->start > 1.0 ? opt->start : 0.0);
@@ -277,6 +282,11 @@ int video_pump(VideoSession *s)
             flags |= VIDEO_EV_ENDED | VIDEO_EV_CHANGED;
             break;
         }
+        case MPV_EVENT_CLIENT_MESSAGE: {
+            const mpv_event_client_message *m = ev->data;
+            if (m && m->num_args >= 1 && m->args && m->args[0] && !strcmp(m->args[0], "thc-panic")) flags |= VIDEO_EV_PANIC;
+            break;
+        }
         case MPV_EVENT_SHUTDOWN:
             s->active = false;
             flags |= VIDEO_EV_ENDED | VIDEO_EV_CHANGED;
@@ -303,6 +313,18 @@ int video_pump(VideoSession *s)
 void video_command(VideoSession *s, const char *cmd)
 {
     if (s->h) s->api->command_string(s->h, cmd);
+}
+
+void video_set_masked(VideoSession *s, bool masked, const char *shot_dir)
+{
+    if (!s->h) return;
+    /* properties, not options: mpv.conf cannot override them */
+    s->api->set_property_string(s->h, "force-media-title", masked ? "THC" : "");
+    s->api->set_property_string(s->h, "title", masked ? "THC" : "${media-title} - THC");
+    if (shot_dir && *shot_dir) {
+        SDL_CreateDirectory(shot_dir);
+        s->api->set_property_string(s->h, "screenshot-directory", shot_dir);
+    }
 }
 
 void video_set_ontop(VideoSession *s, bool on, const char *macos_level)

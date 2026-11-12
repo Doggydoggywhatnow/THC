@@ -379,3 +379,15 @@ FsNode *fs_filter(const FsNode *src, bool (*hidden)(void *ud, const FsNode *n), 
     if (!src) return NULL;
     return filter_rec(src, NULL, hidden, ud, want_hidden, true);
 }
+
+bool nsfw_record_allowed(const NsfwIndex *x, bool history_on_for_kind, bool record_nsfw, int root, const char *rel, int64_t size)
+{
+    if (!history_on_for_kind) return false;
+    if (record_nsfw || !x) return true;
+    return !nsfw_hidden(x, root, rel, false, size, NULL);
+}
+
+void nsfw_thumb_name(const char *hexkey, bool nsfw, char *out, size_t cap)
+{
+    snprintf(out, cap, "%s%s", nsfw ? "nsfw/" : "", hexkey);
+}

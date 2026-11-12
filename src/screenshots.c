@@ -141,3 +141,42 @@ bool screenshot_delete(const char *dir, const char *path)
     if (!screenshot_path_in_dir(dir, path)) return false;
     return remove(path) == 0;
 }
+
+void screenshot_nsfw_dir(const char *dir, char *out, size_t cap)
+{
+    snprintf(out, cap, "%s/nsfw", dir);
+}
+
+int files_remove_in_dir(const char *dir)
+{
+    int n = 0;
+#ifdef _WIN32
+    char pat[1400];
+    snprintf(pat, sizeof pat, "%s\\*", dir);
+    WIN32_FIND_DATAA fd;
+    HANDLE h = FindFirstFileA(pat, &fd);
+    if (h != INVALID_HANDLE_VALUE) {
+        do {
+            if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+            char full[1400];
+            snprintf(full, sizeof full, "%s\\%s", dir, fd.cFileName);
+            if (remove(full) == 0) n++;
+        } while (FindNextFileA(h, &fd));
+        FindClose(h);
+    }
+#else
+    DIR *d = opendir(dir);
+    if (d) {
+        struct dirent *e;
+        while ((e = readdir(d)) != NULL) {
+            char full[1400];
+            snprintf(full, sizeof full, "%s/%s", dir, e->d_name);
+            struct stat st;
+            if (lstat(full, &st) != 0 || (st.st_mode & S_IFMT) != S_IFREG) continue;
+            if (remove(full) == 0) n++;
+        }
+        closedir(d);
+    }
+#endif
+    return n;
+}

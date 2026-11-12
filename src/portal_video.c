@@ -735,6 +735,7 @@ static void set_season_watched(App *a, const Season *se, bool watched)
 {
     for (int i = 0; i < se->neps; i++) {
         char rel[THC_PATH_MAX];
+        if (!app_history_ok_node(a, KIND_VIDEO, se->eps[i].file)) continue;       /* NSFW: nothing is recorded */
         fs_relpath(se->eps[i].file, rel, sizeof rel);
         history_set_watched(a->hist, rel, se->eps[i].file->size, watched);
     }

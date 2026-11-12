@@ -223,6 +223,7 @@ static void play_book(App *a, const Book *b, int file, bool from_start)
     if (from_start) {
         for (int i = 0; i < b->nfiles; i++) {
             char rel[THC_PATH_MAX];
+            if (!app_history_ok_node(a, KIND_BOOK, b->files[i])) continue;
             history_set_watched(a->hist, fs_relpath(b->files[i], rel, sizeof rel), b->files[i]->size, false);
         }
         app_history_changed();

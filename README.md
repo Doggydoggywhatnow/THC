@@ -55,6 +55,8 @@ THC is a nod to getting high and watching movies, listening to music, and just e
 3. **Accessible.** The amazing MPV has a great host of accessibility features, and we also allow the user to change many things.
 4. **Private.** All on your device. What you watch is your business. Period.
 
+The optional **NSFW portal** (below) goes further: anything you mark NSFW stays out of the normal portals, the system, caches and logs.
+
 ## Features
 
 - A graphical interface for the media you already have
@@ -65,6 +67,7 @@ THC is a nod to getting high and watching movies, listening to music, and just e
 - **Watched tracking:** a playback bar and checkmark under each video
 - **Video thumbnails:** a picture next to the video, or a frame THC grabs from it, on episodes and posters
 - **Tags from your audio files:** titles, artists, albums, track numbers and embedded cover art
+- **Queue, music search and listening history** (0.2.0), **screenshots** in THC's folder, and an optional, private **NSFW portal** (0.3.0)
 - Audio effect plugin support *(later release)*
 - Audiobook support with features suited to listening to books
 - Its own MPV configuration, separate from any standalone MPV install, with all of MPV's config options available
@@ -235,6 +238,7 @@ There were no mockups; these are the decisions behind the look, so it stays cons
   - **Video, "Cinema":** deep navy with an ember (orange to rose) accent. Tall 2:3 posters, wide 16:9 cards for Continue watching and Up next, a large banner at the top.
   - **Music, "Vinyl":** plum night with mint and violet. Round artist avatars, square album covers, an album page with the cover beside the track list.
   - **Audiobooks, "Library":** warm paper and ink with an amber accent. Covers are drawn as books with a spine.
+  - **NSFW, "After hours" (off by default):** wine and neon pink with an amber accent, and a **beer bottle with an XXX label** as its icon (three small crosses at small sizes). The tab always has a text label too.
 - **The playback bar and checkmark** sit under every video: an accent-colored bar for progress, which turns green with a round checkmark once watched. Shows use the same bar for "episodes watched out of all".
 - **Art:** `poster`, `cover`, `folder`, `front`, `album` or `show` images (`.jpg` or `.png`) next to your media are used as artwork. Without one, THC draws a gradient made from the title, so every show still gets a distinct card.
 - **Type:** Atkinson Hyperlegible, a typeface designed by the Braille Institute for low-vision readers, bundled with THC. Characters it lacks (Japanese titles, for example) fall back to fonts already on your system.
@@ -244,6 +248,21 @@ There were no mockups; these are the decisions behind the look, so it stays cons
 ### About and Settings
 
 Click the **THC logo** (or press **Ctrl+,**) to open one scrolling page. At the top is **About**: the logo with a small version number, what THC is, a link to the project, the licenses of what it is built with. **Scroll past it, or press "Jump to settings", and the settings begin**, in sections (Library, Playback, Appearance, Accessibility, Hotkeys, MPV, Privacy). Click the logo again, press Escape, or choose a portal to leave. The logo has a visible focus ring and a tooltip, and works from the keyboard.
+
+## NSFW portal (0.3.0)
+
+An optional, **separate portal** for the files you would rather keep apart. It is **off by default**: until you turn on **Settings, Privacy, Enable the NSFW portal** there is no NSFW tab, no "Mark as NSFW" action and nothing changes anywhere.
+
+- **Marking.** Right-click a video, episode, movie, song, album, book, show, season or any folder and choose **Mark as NSFW**, or press **N** on the selected item (it unmarks inside the NSFW portal). A folder mark covers everything inside it, **including files added later**. In **Settings, Library** a whole library folder can count as NSFW. Optional **rules** (names or patterns such as `NSFW` or `*xxx*`, not case sensitive) mark matching folders, but never override an explicit **Not NSFW**. Marked items leave the normal portals at once, with an **Undo** in the toast.
+- **Only presentation.** Marks live in THC's own history database (schema version 3); **nothing on disk is touched, moved or renamed.** A marked file follows the file if it moves, using the same rule as history: only when its old path is really gone.
+- **The NSFW tab** (after Audiobooks) has sub-tabs Video, Music, Audiobooks and Screenshots. They are the normal screens, showing only NSFW items. Its look is "After hours" (see Interface design).
+- **Hide in one action.** **Ctrl+Shift+H**, a right-click on the tab ("Hide NSFW tab") or a switch in Settings hides the tab at once and leaves the portal; the same key shows it again. *Hidden is not off:* marked items stay out of the normal portals and nothing is deleted. Hiding stops NSFW playback by default. The state is remembered.
+- **Lock (optional).** A PIN or passphrase for the portal and its settings, stored only as a **salted PBKDF2-HMAC-SHA-256 hash (50,000 iterations)** from THC's own public-domain SHA-256. THC locks again after a while (10 minutes by default), on the panic key and when the tab is hidden. **This is a courtesy lock, not security:** your media files and THC's data are not encrypted. "Reset NSFW lock" clears the PIN after you type RESET and deletes nothing.
+- **Panic key (Ctrl+Shift+X).** Stops NSFW playback, closes the MPV window, silences audio, leaves the portal, locks it and removes NSFW items from every queue and backlog. It also works **inside the MPV window**. Pressing it repeatedly is safe.
+- **No leaks.** NSFW items are never in Continue watching, Up next, recently added or played, counts, music search, queue suggestions or the normal screens (those read a copy of the library without them). **No history, plays or backlog** are recorded for them unless you turn that on. The MPV window title, the on-screen display and screenshot names say only "THC", media keys and the desktop's now-playing show only "Playing", and NSFW titles are hidden in the queue and the playback bar. **Thumbnails** go in `thumbs/nsfw/` and **screenshots** taken while an NSFW item plays in `screenshots/nsfw/`; both are removed when THC exits (a setting). THC prints no NSFW names in logs. `thc-inspect` reports the number of marks and never prints the name of an NSFW item.
+- **Limits.** MPV scripts you install yourself are outside THC's control and may show or save titles. The debugging switch `THC_MPV_LOG` makes MPV print what it opens. A backup includes the marks only with "Include watch and listening history". The marks list can be exported and imported as plain text, which needs the lock open.
+
+Not in this release: a blur or warn-first mode in the main portals, a boss key, search inside the NSFW portal, and showing why an item is NSFW.
 
 ## Watch tracking and MPV configuration
 
@@ -399,6 +418,9 @@ THC lets you change many things to suit you, all in **Settings**:
 - Volume, audiobook speed and skip length
 - THC's own MPV configuration, kept separate from any standalone MPV, with all of MPV's options available
 - **Editable hotkeys:** keyboard shortcuts can be remapped
+
+### NSFW portal
+- Off by default; enable, hide, history, thumbnails, title masking, rules, library folders, lock timer and the PIN, all in **Settings, Privacy**. Hotkeys (mark **N**, panic **Ctrl+Shift+X**, hide or show the tab **Ctrl+Shift+H**) are remappable.
 
 ### Appearance
 - **Light and dark mode**, or follow the system

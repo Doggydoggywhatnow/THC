@@ -34,6 +34,7 @@ typedef enum mpv_event_id {
     MPV_EVENT_START_FILE = 6,
     MPV_EVENT_END_FILE = 7,
     MPV_EVENT_FILE_LOADED = 8,
+    MPV_EVENT_CLIENT_MESSAGE = 16,
     MPV_EVENT_IDLE = 11,
     MPV_EVENT_PLAYBACK_RESTART = 21,
     MPV_EVENT_PROPERTY_CHANGE = 22
@@ -58,6 +59,11 @@ typedef struct mpv_event_end_file {
     int error;
     /* more fields follow upstream; THC reads only these */
 } mpv_event_end_file;
+
+typedef struct mpv_event_client_message {
+    int num_args;
+    const char **args;
+} mpv_event_client_message;
 
 typedef struct mpv_event {
     mpv_event_id event_id;

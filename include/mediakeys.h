@@ -36,8 +36,8 @@ typedef struct MediaBackend {
 bool mediakeys_claim(int mode, bool has_item);
 /* May the system see details of this kind of media? (Video: no, unless the user turned it on.) */
 bool mediakeys_shares(const Settings *s, int kind);
-/* What the system gets. Nothing but "THC" for a video by default. */
-void mediakeys_build(NowPlaying *np, const Settings *s, int kind, bool has_item, bool playing, const char *title,
+/* What the system gets. Nothing but "THC" for a video by default; an NSFW item is only ever "Playing" (#13). */
+void mediakeys_build(NowPlaying *np, const Settings *s, int kind, bool has_item, bool nsfw, bool playing, const char *title,
                      const char *artist, const char *album, const char *art, double position, double length);
 /* Seconds for the seek keys: the audiobook skip length for audiobooks, else mediakeys_seek_seconds. */
 double mediakeys_seek_seconds(const Settings *s, int kind);

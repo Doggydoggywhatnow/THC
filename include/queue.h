@@ -54,6 +54,9 @@ int queue_add(Queue *q, const QueueItem *it, bool after_current);
 int queue_insert(Queue *q, int index, const QueueItem *it);
 /* Remove one item. The current item may be removed (cur then points at what followed it). */
 bool queue_remove(Queue *q, int index);
+/* Remove every item `pred` says yes to, played ones and upcoming ones alike. The item at `keep` (an index, or -1) is
+ * skipped. The current index follows its item. Returns how many went. */
+int queue_remove_if(Queue *q, bool (*pred)(void *ud, const QueueItem *it), void *ud, int keep);
 bool queue_move(Queue *q, int from, int to);
 /* Move an item to the other queue. Returns its index there, or -1. */
 int queue_transfer(Queue *from, int index, Queue *to, bool after_current);

@@ -50,7 +50,7 @@ static void write_file(const char *path, const char *text)
 
 int main(void)
 {
-    if (system("rm -rf insp_fx insp_media insp_snap.txt; mkdir -p insp_fx/mpv insp_fx/screenshots insp_media/sub")) {}
+    if (system("rm -rf insp_fx insp_media insp_snap.txt; mkdir -p insp_fx/mpv insp_fx/screenshots/nsfw insp_fx/thumbs/nsfw insp_media/sub")) {}
 
     /* a history database with a few rows */
     char err[256];
@@ -59,6 +59,10 @@ int main(void)
     if (h) {
         history_save(h, "Shows/A/a.mkv", 1000, 120, 600, 0.9, false);
         history_save(h, "Shows/A/b.mkv", 2000, 600, 600, 0.9, true);
+        history_save(h, "Shows/Secret/s1.mkv", 3000, 10, 600, 0.9, false);          /* NSFW: inside a marked folder */
+        history_save(h, "Other/File.mkv", 3500, 10, 600, 0.9, false);
+        history_nsfw_put(h, 0, 1, "Shows/Secret", 0, 1);
+        history_nsfw_put(h, 0, 0, "Other/File.mkv", 3500, 1);                       /* NSFW: tagged itself */
         history_close(h);
     }
     write_file("insp_fx/settings.ini", "mpv_block_network=true\n");
@@ -67,11 +71,19 @@ int main(void)
     /* clean data, the tool's own program (no network imports): pass */
     int rc = run("%s --data insp_fx --exe %s", INSPECT_BIN, INSPECT_CLEAN);
     CHECK(rc == 0);
-    CHECK(strstr(out, "history.db") && strstr(out, "schema version: 3") && strstr(out, "history: 2 rows"));
+    CHECK(strstr(out, "history.db") && strstr(out, "schema version: 3") && strstr(out, "history: 4 rows"));
     CHECK(strstr(out, "Result: pass"));
     CHECK(strstr(out, "screenshots/Show-00_01_02.png"));     /* screenshots are listed with the other files THC writes (#25) */
     CHECK(!strstr(out, "Shows/A/a.mkv"));                  /* titles stay hidden by default */
+    CHECK(strstr(out, "NSFW marks: 2 marked"));            /* the number of marks is reported... */
+    CHECK(strstr(out, "thumbs/nsfw/: empty"));
+    write_file("insp_fx/screenshots/nsfw/secret-name.png", "png");
+    write_file("insp_fx/thumbs/nsfw/abc.jpg", "jpg");
     CHECK(run("%s --data insp_fx --exe %s --show-titles", INSPECT_BIN, INSPECT_CLEAN) == 0 && strstr(out, "Shows/A/a.mkv"));
+    /* ...but never the name of an NSFW item, not even with --show-titles (#13) */
+    CHECK(!strstr(out, "Secret") && !strstr(out, "Other/File") && strstr(out, "2 NSFW entries left out"));
+    CHECK(run("%s --data insp_fx --exe %s -v", INSPECT_BIN, INSPECT_CLEAN) == 0);
+    CHECK(!strstr(out, "secret-name") && strstr(out, "thumbs/nsfw/: 1 files"));   /* NSFW screenshots are counted, not listed */
 
     /* JSON */
     rc = run("%s --data insp_fx --exe %s --json", INSPECT_BIN, INSPECT_CLEAN);

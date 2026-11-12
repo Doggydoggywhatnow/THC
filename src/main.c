@@ -261,8 +261,44 @@ void app_pick_backup_folder(App *a, bool restore)
     app_toast(a, restore ? "Choose a THC backup folder. THC only reads it." : "Choose where to put the backup.");
 }
 
+void app_nsfw_export_tags(App *a)
+{
+    if (!a->nsfw_unlocked) return;                        /* the list names what is marked: the lock must be open */
+    a->dlg_target = DLG_NSFW_EXPORT;
+    static const SDL_DialogFileFilter tf[] = { { "Text", "txt" } };
+    SDL_ShowSaveFileDialog(folder_chosen, a, a->win, tf, 1, "thc-nsfw-marks.txt");
+}
+
+void app_nsfw_import_tags(App *a)
+{
+    if (!a->nsfw_unlocked) return;
+    a->dlg_target = DLG_NSFW_IMPORT;
+    static const SDL_DialogFileFilter tf[] = { { "Text", "txt" } };
+    SDL_ShowOpenFileDialog(folder_chosen, a, a->win, tf, 1, NULL, false);
+}
+
+static void nsfw_list_dialog_done(App *a)
+{
+    if (a->dlg_target == DLG_NSFW_EXPORT) {
+        FILE *f = fopen(a->dlg_path, "wb");
+        int n = f ? nsfw_export(a->nsfw, f) : -1;
+        if (f) fclose(f);
+        app_toast(a, n >= 0 ? "Marks exported" : "Could not write the file");
+    } else {
+        FILE *f = fopen(a->dlg_path, "rb");
+        int n = f ? nsfw_import(a->nsfw, a->hist, f) : -1;
+        if (f) fclose(f);
+        if (n >= 0) { a->nsfw_refresh = true; app_toast(a, "Imported %d mark%s", n, n == 1 ? "" : "s"); }
+        else app_toast(a, "Could not read the file");
+    }
+}
+
 static void backup_dialog_done(App *a)
 {
+    if (a->dlg_target == DLG_NSFW_EXPORT || a->dlg_target == DLG_NSFW_IMPORT) {
+        nsfw_list_dialog_done(a);
+        return;
+    }
     BackupOptions opt = { a->bk_history, a->bk_screens };
     char err[256] = "", out[THC_PATH_MAX];
     if (a->dlg_target == DLG_BACKUP) {
@@ -397,8 +433,10 @@ static bool handle_hotkey(App *a, const SDL_KeyboardEvent *k)
             HistoryEntry e;
             bool w = app_history(a, f, &e) && e.watched;
             char rel[THC_PATH_MAX];
-            history_set_watched(a->hist, fs_relpath(f, rel, sizeof rel), f->size, !w);
-            app_history_changed();
+            if (app_history_ok_node(a, KIND_VIDEO, f)) {
+                history_set_watched(a->hist, fs_relpath(f, rel, sizeof rel), f->size, !w);
+                app_history_changed();
+            }
             app_toast(a, w ? "Marked as not watched" : "Marked as watched");
             return true;
         }
@@ -424,6 +462,7 @@ static void go_back(App *a)
     case SCREEN_BOOKS: nav_pop(a, &a->bnav); break;
     case SCREEN_SHOTS: screenshots_back(); break;
     case SCREEN_NSFW: {
+        if (a->nsfw_sub == 3) { screenshots_back_nsfw(); break; }
         PortalNav *nav = a->nsfw_sub == 0 ? &a->nvnav : a->nsfw_sub == 1 ? &a->nmnav : &a->nbnav;
         app_nsfw_view_enter(a);
         nav_pop(a, nav == &a->nvnav ? &a->vnav : nav == &a->nmnav ? &a->mnav : &a->bnav);
@@ -624,6 +663,9 @@ static void handle_event(App *a, SDL_Event *ev)
         app_apply_appearance(a);
         return;
     }
+    if (ev->type == SDL_EVENT_KEY_DOWN || ev->type == SDL_EVENT_MOUSE_BUTTON_DOWN || ev->type == SDL_EVENT_MOUSE_WHEEL ||
+        ev->type == SDL_EVENT_TEXT_INPUT)
+        a->last_input = ui->time;                      /* activity, for the NSFW auto-relock */
     bool used = ui_event(ui, ev);
     if (ev->type == SDL_EVENT_KEY_DOWN && !used) {
         SDL_Keycode k = ev->key.key;
@@ -745,6 +787,7 @@ int main(int argc, char **argv)
     music_shutdown(a);
     tagcache_shutdown();
     thumbs_shutdown();
+    app_nsfw_cleanup(a);                 /* NSFW thumbnails and screenshots do not outlive the session (setting) */
     app_save_settings(a);
     if (a->scan_thread) SDL_WaitThread(a->scan_thread, NULL);
     library_clear(&a->vlib);

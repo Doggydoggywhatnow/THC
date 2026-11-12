@@ -19,7 +19,7 @@
 enum { TS_UNKNOWN = 0, TS_QUEUED, TS_READY, TS_FAILED };
 
 typedef struct Entry {
-    char key[17];
+    char key[24];
     SDL_AtomicInt state;
 } Entry;
 
@@ -212,9 +212,21 @@ bool thumb_get(App *a, int root, const FsNode *file, char *out, size_t cap)
     }
     /* 2. a generated frame */
     if (!a->set.video_thumbs || !a->have_mpv || !start(a)) return false;
-    char key[17], full[THC_PATH_MAX];
+    char key[24], hexkey[17], full[THC_PATH_MAX];
     app_full_path(a, root, file, full, sizeof full);
-    thumb_key_cached(full, file->size, file->mtime, key);   /* content-based, read once per session (#22) */
+    thumb_key_cached(full, file->size, file->mtime, hexkey);   /* content-based, read once per session (#22) */
+    /* NSFW thumbnails live in thumbs/nsfw/ and are removed when THC exits (#13) */
+    if (a->nsfw && app_nsfw_hidden(a, root, file)) {
+        nsfw_thumb_name(hexkey, true, key, sizeof key);
+        static bool made;
+        if (!made) {
+            char nd[THC_PATH_MAX];
+            SDL_snprintf(nd, sizeof nd, "%s/nsfw", T.dir);
+            made = SDL_CreateDirectory(nd);
+        }
+    } else {
+        SDL_strlcpy(key, hexkey, sizeof key);
+    }
     int idx = 0;
     Entry *e = entry_for(key, &idx);
     if (!e) return false;

@@ -1,5 +1,6 @@
 /* screen_settings.c: everything the user can change, grouped by topic. */
 #include "app.h"
+#include "pin.h"
 #include "ontop.h"
 #include "hotkeys.h"
 #include "mpvconf.h"
@@ -885,6 +886,92 @@ static void page_mpv(App *a, Layout *L)
     }
 }
 
+/* ---- the NSFW lock in Settings ---- */
+
+static char g_pin_new[64], g_pin_again[64], g_pin_gate[64], g_reset_text[16];
+static char g_pin_msg[96];
+
+static void random_salt(uint8_t out[PIN_SALT_BYTES])
+{
+    Uint8 seed[64];
+    Uint64 v[4] = { SDL_GetTicksNS(), SDL_GetPerformanceCounter(), (Uint64)(size_t)&v, (Uint64)SDL_rand_bits() << 32 | SDL_rand_bits() };
+    memcpy(seed, v, sizeof v);
+    for (int i = 0; i < 4; i++) { Uint64 r = (Uint64)SDL_rand_bits() << 32 | SDL_rand_bits(); memcpy(seed + 32 + i * 8, &r, 8); }
+    uint8_t digest[32];
+    sha256(seed, sizeof seed, digest);
+    memcpy(out, digest, PIN_SALT_BYTES);
+}
+
+static void nsfw_unlock_gate(App *a, Layout *L)
+{
+    Ui *ui = &a->ui;
+    note(a, L, ICON_SHIELD, "The NSFW settings are locked. Enter your PIN to change them.");
+    bool enter = ui_passfield(ui, ui_id("set-nsfw-gate"), next_row(a, L, dp(ui, 52)), g_pin_gate, sizeof g_pin_gate, "PIN");
+    if (ui_button(ui, ui_id("set-nsfw-unlock"), (SDL_FRect){ L->x, L->y, dp(ui, 160), dp(ui, 46) }, "Unlock", ICON_CHECK, true) || enter) {
+        if (pin_verify(g_pin_gate, a->set.nsfw_pin_salt, a->set.nsfw_pin_hash)) { a->nsfw_unlocked = true; g_pin_msg[0] = 0; }
+        else SDL_strlcpy(g_pin_msg, "That PIN is not right.", sizeof g_pin_msg);
+        memset(g_pin_gate, 0, sizeof g_pin_gate);
+    }
+    L->y += dp(ui, 46) + L->gap;
+    if (g_pin_msg[0]) note(a, L, ICON_INFO, g_pin_msg);
+    note(a, L, ICON_INFO, "Forgot the PIN? Type RESET below to clear it. Nothing is deleted. This lock is a courtesy, not security: "
+                          "your media and THC's files are not encrypted, so anyone with access to this computer can open them.");
+    ui_textfield(ui, ui_id("set-nsfw-reset-text"), next_row(a, L, dp(ui, 52)), g_reset_text, sizeof g_reset_text, "Type RESET");
+    if (ui_button(ui, ui_id("set-nsfw-reset"), (SDL_FRect){ L->x, L->y, dp(ui, 240), dp(ui, 46) }, "Reset NSFW lock", ICON_CLOSE, false) &&
+        !strcmp(g_reset_text, "RESET")) {
+        a->set.nsfw_pin_salt[0] = 0;
+        a->set.nsfw_pin_hash[0] = 0;
+        a->nsfw_unlocked = true;
+        g_reset_text[0] = 0;
+        app_save_settings(a);
+        app_toast(a, "The NSFW lock was cleared");
+    }
+    L->y += dp(ui, 46) + L->gap;
+}
+
+static void nsfw_pin_settings(App *a, Layout *L)
+{
+    Ui *ui = &a->ui;
+    bool has = a->set.nsfw_pin_hash[0] != 0;
+    group(a, L, has ? "Change or remove the PIN" : "Lock the NSFW portal with a PIN", "A courtesy lock, not security: THC does not encrypt your media or its own files. The PIN is stored only as a salted, iterated hash (PBKDF2-HMAC-SHA-256).");
+    ui_passfield(ui, ui_id("set-pin-new"), next_row(a, L, dp(ui, 52)), g_pin_new, sizeof g_pin_new, has ? "New PIN or passphrase" : "PIN or passphrase");
+    ui_passfield(ui, ui_id("set-pin-again"), next_row(a, L, dp(ui, 52)), g_pin_again, sizeof g_pin_again, "Type it again");
+    if (ui_button(ui, ui_id("set-pin-set"), (SDL_FRect){ L->x, L->y, dp(ui, 200), dp(ui, 46) }, has ? "Change PIN" : "Set PIN", ICON_CHECK, true)) {
+        if (strlen(g_pin_new) < 4) SDL_strlcpy(g_pin_msg, "Use at least 4 characters.", sizeof g_pin_msg);
+        else if (strcmp(g_pin_new, g_pin_again)) SDL_strlcpy(g_pin_msg, "The two entries are not the same.", sizeof g_pin_msg);
+        else {
+            uint8_t salt[PIN_SALT_BYTES];
+            random_salt(salt);
+            pin_make(g_pin_new, salt, a->set.nsfw_pin_salt, a->set.nsfw_pin_hash);
+            app_save_settings(a);
+            a->nsfw_unlocked = true;
+            SDL_strlcpy(g_pin_msg, has ? "PIN changed." : "PIN set. The portal asks for it from now on.", sizeof g_pin_msg);
+        }
+        memset(g_pin_new, 0, sizeof g_pin_new);
+        memset(g_pin_again, 0, sizeof g_pin_again);
+    }
+    if (has && ui_button(ui, ui_id("set-pin-remove"), (SDL_FRect){ L->x + dp(ui, 212), L->y, dp(ui, 200), dp(ui, 46) }, "Remove PIN", ICON_CLOSE, false)) {
+        a->set.nsfw_pin_salt[0] = 0;
+        a->set.nsfw_pin_hash[0] = 0;
+        app_save_settings(a);
+        SDL_strlcpy(g_pin_msg, "The PIN was removed.", sizeof g_pin_msg);
+    }
+    L->y += dp(ui, 46) + L->gap;
+    if (g_pin_msg[0]) note(a, L, ICON_INFO, g_pin_msg);
+}
+
+static void nsfw_tag_list_settings(App *a, Layout *L)
+{
+    Ui *ui = &a->ui;
+    char line[160];
+    SDL_snprintf(line, sizeof line, "%d NSFW mark%s. The list names what you marked, so exporting needs the lock open. A backup includes the marks only with \"Include watch and listening history\".",
+                 nsfw_tag_count(a->nsfw), nsfw_tag_count(a->nsfw) == 1 ? "" : "s");
+    note(a, L, ICON_INFO, line);
+    if (ui_button(ui, ui_id("set-nsfw-export"), (SDL_FRect){ L->x, L->y, dp(ui, 230), dp(ui, 46) }, "Export the marks", ICON_SORT, false)) app_nsfw_export_tags(a);
+    if (ui_button(ui, ui_id("set-nsfw-import"), (SDL_FRect){ L->x + dp(ui, 242), L->y, dp(ui, 230), dp(ui, 46) }, "Import marks", ICON_SORT, false)) app_nsfw_import_tags(a);
+    L->y += dp(ui, 46) + L->gap;
+}
+
 /* "What THC stores": the entries of THC's data folder with their sizes (folders add up everything inside). */
 typedef struct StoredItem { char name[96]; Sint64 size; bool dir; } StoredItem;
 static StoredItem g_stored[32];
@@ -1024,7 +1111,9 @@ static void page_privacy(App *a, Layout *L)
             a->nsfw_refresh = true;
             if (!a->set.nsfw_enabled) { player_purge_nsfw(a, false); a->nsfw_unlocked = true; }
         }
-        if (a->set.nsfw_enabled) {
+        if (a->set.nsfw_enabled && a->set.nsfw_pin_hash[0] && !a->nsfw_unlocked) {
+            nsfw_unlock_gate(a, L);
+        } else if (a->set.nsfw_enabled) {
             bool hidden = a->set.nsfw_tab == NSFW_TAB_HIDDEN, hb = hidden;
             tog(a, L, "set-nsfw-hide", "Hide the NSFW tab", "Marked items stay out of the normal portals; show it again here or with the hotkey", &hidden);
             if (hidden != hb) app_nsfw_set_tab_hidden(a, hidden);
@@ -1049,7 +1138,8 @@ static void page_privacy(App *a, Layout *L)
                 a->set.nsfw_relock_minutes = (int)rl;
                 app_save_settings(a);
             }
-            note(a, L, ICON_SHIELD, "The PIN lock below is a courtesy lock, not security: your media files and THC's data are not encrypted.");
+            nsfw_pin_settings(a, L);
+            nsfw_tag_list_settings(a, L);
         }
     }
     group(a, L, "Network", "THC itself never uses the network. This also keeps MPV, which plays your videos, offline.");

@@ -1,0 +1,4 @@
+sha256.c and sha256.h are THC's own implementation of SHA-256 (FIPS 180-4), HMAC (RFC 2104) and
+PBKDF2 (RFC 8018), written for THC and released into the public domain under the Unlicense,
+like the rest of THC. They contain no code from any other project. They are checked against the
+published test vectors in tests/test_pin.c.

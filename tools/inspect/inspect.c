@@ -244,6 +244,7 @@ static void files_cb(const char *full, const char *rel, const struct stat *st, v
     c->total += (long long)st->st_size;
     c->count++;
     /* thumbnails can be thousands of files: summarize them unless -v */
+    if (!strncmp(rel, "screenshots/nsfw/", 17)) return;       /* counted, never listed: the names could say what they show */
     if (!R.verbose && (!strncmp(rel, "thumbs/", 7) || !strncmp(rel, "cache/", 6))) return;
     char sz[32], tm[48], line[200];
     fmt_size((long long)st->st_size, sz, sizeof sz);
@@ -291,6 +292,92 @@ static void report_files(const char *data)
 /* History database                                                            */
 /* ------------------------------------------------------------------------ */
 
+/* ---- NSFW (#13): the tool counts the marks and never prints the name of a marked item ---- */
+
+static int g_nsfw_rules_on;
+static char g_nsfw_rules[300];
+static int g_nsfw_roots;
+
+static int glob_match(const char *p, const char *s)
+{
+    while (*p) {
+        if (*p == '*') {
+            while (*p == '*') p++;
+            if (!*p) return 1;
+            for (; *s; s++) if (glob_match(p, s)) return 1;
+            return 0;
+        }
+        if (!*s) return 0;
+        if (*p != '?' && tolower((unsigned char)*p) != tolower((unsigned char)*s)) return 0;
+        p++; s++;
+    }
+    return !*s;
+}
+
+static int rules_hit(const char *rel)
+{
+    if (!g_nsfw_rules_on || !g_nsfw_rules[0]) return 0;
+    char part[256];
+    const char *p = rel;
+    while (*p) {
+        const char *sl = strchr(p, '/');
+        size_t n = sl ? (size_t)(sl - p) : strlen(p);
+        if (n && n < sizeof part) {
+            memcpy(part, p, n);
+            part[n] = 0;
+            const char *r = g_nsfw_rules;
+            while (*r) {
+                const char *bar = strchr(r, '|');
+                size_t rl = bar ? (size_t)(bar - r) : strlen(r);
+                char pat[128];
+                while (rl && isspace((unsigned char)*r)) { r++; rl--; }
+                while (rl && isspace((unsigned char)r[rl - 1])) rl--;
+                if (rl && rl < sizeof pat) {
+                    memcpy(pat, r, rl);
+                    pat[rl] = 0;
+                    if (glob_match(pat, part)) return 1;
+                }
+                if (!bar) break;
+                r = bar + 1;
+            }
+        }
+        if (!sl) break;
+        p = sl + 1;
+    }
+    return 0;
+}
+
+static int tag_state(sqlite3 *db, const char *sql, const char *rel, long long size, int use_size)
+{
+    sqlite3_stmt *q;
+    int state = -1;
+    if (sqlite3_prepare_v2(db, sql, -1, &q, NULL) != SQLITE_OK) return -1;
+    sqlite3_bind_text(q, 1, rel, -1, SQLITE_TRANSIENT);
+    if (use_size) sqlite3_bind_int64(q, 2, size);
+    if (sqlite3_step(q) == SQLITE_ROW) state = sqlite3_column_int(q, 0);
+    sqlite3_finalize(q);
+    return state;
+}
+
+/* Would THC treat this history row as NSFW? Conservative: any root, any rule. */
+static int row_is_nsfw(sqlite3 *db, const char *rel, long long size)
+{
+    int st = tag_state(db, "SELECT state FROM nsfw_tags WHERE scope=0 AND rel_path=?1 AND size=?2 LIMIT 1", rel, size, 1);
+    if (st >= 0) return st == 1;
+    char buf[1024];
+    snprintf(buf, sizeof buf, "%s", rel);
+    for (char *sl = strrchr(buf, '/'); sl; sl = strrchr(buf, '/')) {
+        *sl = 0;
+        st = tag_state(db, "SELECT state FROM nsfw_tags WHERE scope=1 AND rel_path=?1 LIMIT 1", buf, 0, 0);
+        if (st >= 0) return st == 1;
+    }
+    return rules_hit(rel);
+}
+
+static int setting_value(const char *data, const char *key, char *out, size_t cap);
+
+static int setting_value(const char *data, const char *key, char *out, size_t cap);
+
 static void report_history(const char *data)
 {
     section("History database");
@@ -330,13 +417,41 @@ static void report_history(const char *data)
             sqlite3_finalize(q);
         }
     }
-    if (R.titles) {
-        if (sqlite3_prepare_v2(db, "SELECT path, position, watched FROM history ORDER BY updated DESC LIMIT 50", -1, &q, NULL) ==
-            SQLITE_OK) {
-            while (sqlite3_step(q) == SQLITE_ROW)
-                kv("history", "%s (at %.0f s%s)", (const char *)sqlite3_column_text(q, 0), sqlite3_column_double(q, 1),
-                   sqlite3_column_int(q, 2) ? ", watched" : "");
+    {   /* NSFW: how many marks there are, never what they are */
+        int marks = 0, nots = 0;
+        if (sqlite3_prepare_v2(db, "SELECT COALESCE(SUM(state=1),0), COALESCE(SUM(state=0),0) FROM nsfw_tags", -1, &q, NULL) == SQLITE_OK) {
+            if (sqlite3_step(q) == SQLITE_ROW) { marks = sqlite3_column_int(q, 0); nots = sqlite3_column_int(q, 1); }
             sqlite3_finalize(q);
+            kv("NSFW marks", "%d marked, %d explicitly not NSFW", marks, nots);
+        }
+        char nd[1200];
+        snprintf(nd, sizeof nd, "%s/thumbs/nsfw", data);
+        struct stat nst;
+        if (stat(nd, &nst) == 0 && is_dir(&nst)) {
+            long long v[2] = { 0, 0 };
+            walk(nd, "", thumbs_cb, v);
+            kv("thumbs/nsfw/", v[0] ? "%lld files (THC removes them when it exits)" : "empty", v[0]);
+        } else {
+            kv("thumbs/nsfw/", "empty");
+        }
+    }
+    if (R.titles) {
+        char v[16];
+        if (setting_value(data, "nsfw_rules_enabled", v, sizeof v)) g_nsfw_rules_on = strcmp(v, "0") && strcmp(v, "false");
+        setting_value(data, "nsfw_rules", g_nsfw_rules, sizeof g_nsfw_rules);
+        if (setting_value(data, "nsfw_roots", v, sizeof v)) g_nsfw_roots = atoi(v);
+        if (g_nsfw_roots) {
+            note("Titles are not listed: whole library folders are marked NSFW, and history does not say which folder a row came from.");
+        } else if (sqlite3_prepare_v2(db, "SELECT path, size, position, watched FROM history ORDER BY updated DESC LIMIT 50", -1, &q, NULL) ==
+                   SQLITE_OK) {
+            int hidden = 0;
+            while (sqlite3_step(q) == SQLITE_ROW) {
+                const char *p = (const char *)sqlite3_column_text(q, 0);
+                if (row_is_nsfw(db, p, sqlite3_column_int64(q, 1))) { hidden++; continue; }
+                kv("history", "%s (at %.0f s%s)", p, sqlite3_column_double(q, 2), sqlite3_column_int(q, 3) ? ", watched" : "");
+            }
+            sqlite3_finalize(q);
+            if (hidden) note("%d NSFW entr%s left out. THC-inspect never prints the names of NSFW items.", hidden, hidden == 1 ? "y" : "ies");
         }
     } else {
         note("Titles are hidden. Add --show-titles to list the 50 most recent entries.");

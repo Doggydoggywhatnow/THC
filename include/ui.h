@@ -220,6 +220,8 @@ bool ui_segmented(Ui *ui, Uint32 id, SDL_FRect r, const char *label, const char 
                   int count, int *value);
 /* Single-line text field. Returns true when Enter is pressed. */
 bool ui_textfield(Ui *ui, Uint32 id, SDL_FRect r, char *buf, size_t cap, const char *placeholder);
+/* Like ui_textfield, but draws a star for each character (PINs). */
+bool ui_passfield(Ui *ui, Uint32 id, SDL_FRect r, char *buf, size_t cap, const char *placeholder);
 
 /* For custom controls: while `id` has focus, Left/Right adjust it instead of
  * moving focus. Returns -1, 0 or +1 for this frame. */
