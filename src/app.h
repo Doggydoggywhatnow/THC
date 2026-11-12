@@ -8,6 +8,7 @@
 #include "history.h"
 #include "library.h"
 #include "mpv_dyn.h"
+#include "nsfw.h"
 #include "settings.h"
 #include "tags.h"
 #include "ui.h"
@@ -65,7 +66,12 @@ typedef struct App {
     char play_title[256];
 
     /* library */
-    Library lib;
+    Library lib;                   /* what the normal portals see: NSFW items are filtered out */
+    Library full;                  /* the whole scan, as it is on disk */
+    Library nlib;                  /* only the NSFW items (empty while the portal is off) */
+    bool lib_filtered;             /* lib and nlib are filtered copies (else lib shares full's trees) */
+    VideoLibrary nvlib;            /* shows and movies parsed from nlib */
+    NsfwIndex *nsfw;               /* the tags */
     SDL_Thread *scan_thread;
     SDL_AtomicInt scan_done;
     Library *scan_result;
@@ -250,6 +256,14 @@ void nav_reset(PortalNav *n);
 void nav_push(App *a, PortalNav *n, int root, const char *rel);
 void nav_push_kind(App *a, PortalNav *n, int kind, int arg, int root, const char *rel);
 void app_rebuild_library(App *a);
+/* nsfw_app.c */
+void app_nsfw_init(App *a);
+void app_nsfw_sync(App *a);               /* settings -> index config */
+void app_nsfw_apply(App *a);              /* refilter lib and nlib from full */
+void app_library_changed(App *a);         /* after a scan or a tag change: rebuild everything that reads the library */
+void app_free_library(App *a);
+bool app_nsfw_hidden(App *a, int root, const FsNode *n);   /* the shared check, on a node of a->full */
+void app_nsfw_shutdown(App *a);
 bool nav_pop(App *a, PortalNav *n);
 FsNode *nav_node(App *a, const PortalNav *n);
 

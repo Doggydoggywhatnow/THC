@@ -45,6 +45,9 @@ typedef enum Action {
     ACT_SEARCH,
     ACT_ONTOP,
     ACT_PORTAL_SHOTS,
+    ACT_NSFW_MARK,
+    ACT_NSFW_PANIC,
+    ACT_NSFW_TAB,
     ACT_COUNT
 } Action;
 
@@ -56,6 +59,7 @@ typedef struct ActionInfo {
 extern const ActionInfo k_actions[ACT_COUNT];
 
 enum { SHOT_PNG = 0, SHOT_JPG, SHOT_WEBP };
+enum { NSFW_TAB_VISIBLE = 0, NSFW_TAB_HIDDEN };
 #define SCREENSHOT_DEFAULT_TEMPLATE "%{media-title}-%P"
 
 /* Kinds of media with their own history switch. */
@@ -142,6 +146,19 @@ typedef struct Settings {
     /* Always on top (THC's MPV window) */
     int video_ontop, video_ontop_macos_level;
     bool video_ontop_ignore_fullscreen;
+    /* NSFW portal (off by default). Tags live in history.db; nothing on disk is touched. */
+    bool nsfw_enabled;
+    int nsfw_tab;                            /* NSFW_TAB_VISIBLE / NSFW_TAB_HIDDEN */
+    bool nsfw_hide_stops_playback;           /* hiding the tab stops NSFW playback */
+    bool nsfw_record_history;                /* off: NSFW items leave no history, plays or backlog */
+    bool nsfw_clear_thumbs_on_exit;
+    bool nsfw_confirm_before_open;
+    bool nsfw_mask_titles;                   /* window title, OSD, queue, now playing */
+    bool nsfw_rules_enabled;
+    char nsfw_rules[256];                    /* names or patterns separated by "|" */
+    int nsfw_roots;                          /* bit i: library root i is treated as NSFW */
+    char nsfw_pin_salt[64], nsfw_pin_hash[96];  /* never shown */
+    int nsfw_relock_minutes;                 /* 0 = never */
     /* Screenshots (MPV's s key): folder, format, name template */
     char screenshot_dir[THC_PATH_MAX];       /* empty = <data>/screenshots */
     int screenshot_format;                   /* SHOT_PNG / SHOT_JPG / SHOT_WEBP */

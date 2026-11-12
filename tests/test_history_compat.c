@@ -52,7 +52,7 @@ int main(void)
     sql(k_v1);
     History *h = history_open(DB, err, sizeof err);
     CHECK(h != NULL);
-    CHECK(history_schema_version(h) == 2);               /* upgraded to 0.2.0's version... */
+    CHECK(history_schema_version(h) == 3);               /* upgraded to 0.2.0's version... */
     CHECK(exists(DB ".v1.bak"));                         /* ...after keeping a copy */
     CHECK(history_get(h, "Show/S1/E1.mkv", 1000, &e) && e.position == 700 && !e.watched);
     CHECK(history_get(h, "Movie.mkv", 5000, &e) && e.watched && e.watch_count == 1);
@@ -67,7 +67,7 @@ int main(void)
         "INSERT INTO history(path,size,position) VALUES('a.mkv',1,42); COMMIT;");
     h = history_open(DB, err, sizeof err);
     CHECK(h && history_get(h, "a.mkv", 1, &e) && e.position == 42);
-    CHECK(history_schema_version(h) == 2);
+    CHECK(history_schema_version(h) == 3);
     history_close(h);
 
     /* 3. migrating forward: version 1 -> 3, with a backup, keeping every row */
@@ -126,7 +126,7 @@ int main(void)
     /* 6. a brand-new database gets the current version */
     clean();
     h = history_open(DB, err, sizeof err);
-    CHECK(h && history_schema_version(h) == 2);
+    CHECK(h && history_schema_version(h) == 3);
     CHECK(history_save(h, "x.mkv", 1, 5, 10, 0.9, false));
     history_close(h);
 
@@ -203,6 +203,60 @@ int main(void)
             history_close(g);
             remove("thc_test_samesize.db");
         }
+    }
+    /* 0.3.0: version 3 adds the nsfw_tags table; a 0.2.x database is upgraded after a backup, keeps every
+     * row, and an older THC that knows only version 2 leaves the newer file alone */
+    {
+        char e3[256];
+        const char *V3 = "thc_test_v3.db";
+        remove(V3); remove("thc_test_v3.db.v2.bak"); remove("thc_test_v3.db-wal"); remove("thc_test_v3.db-shm");
+        History *g = history_open(V3, e3, sizeof e3);
+        CHECK(g && history_schema_version(g) == 3);
+        if (g) {
+            CHECK(history_save(g, "Shows/A/1.mkv", 1000, 100, 600, 0.9, false));
+            CHECK(history_nsfw_put(g, 0, 1, "Shows/Secret", 0, 1));
+            history_close(g);
+        }
+        /* turn the file into a 0.2.x one: version 2, no nsfw_tags */
+        sqlite3 *raw = NULL;
+        CHECK(sqlite3_open(V3, &raw) == SQLITE_OK);
+        if (raw) {
+            sqlite3_exec(raw, "DROP TABLE nsfw_tags; PRAGMA user_version=2;", NULL, NULL, NULL);
+            sqlite3_close(raw);
+        }
+        g = history_open(V3, e3, sizeof e3);
+        CHECK(g && history_schema_version(g) == 3);
+        CHECK(exists("thc_test_v3.db.v2.bak"));
+        HistoryEntry he;
+        CHECK(g && history_get(g, "Shows/A/1.mkv", 1000, &he) && he.position == 100);   /* every row kept */
+        int nt = 0;
+        NsfwTagRow *tr = g ? history_nsfw_load(g, &nt) : NULL;
+        CHECK(nt == 0);
+        free(tr);
+        CHECK(g && history_nsfw_put(g, 0, 1, "Shows/Secret", 0, 1) && history_nsfw_put(g, 2, 0, "a.m4b", 55, 1));
+        if (g) history_close(g);
+        /* an older THC (knows version 2) reads and writes the version-3 file and leaves it at 3 */
+        g = history_open_ex(V3, 2, NULL, e3, sizeof e3);
+        CHECK(g && history_schema_version(g) == 3);
+        CHECK(g && history_save(g, "Shows/A/2.mkv", 2000, 50, 600, 0.9, false));
+        CHECK(g && history_get(g, "Shows/A/1.mkv", 1000, &he) && he.position == 100);
+        if (g) history_close(g);
+        g = history_open(V3, e3, sizeof e3);
+        tr = g ? history_nsfw_load(g, &nt) : NULL;
+        CHECK(nt == 2 && tr && tr[0].scope == 1 && tr[1].scope == 0 && tr[1].size == 55);     /* the tags survived */
+        free(tr);
+        CHECK(g && history_get(g, "Shows/A/2.mkv", 2000, &he) && he.position == 50);
+        /* tags: upsert, explicit "not NSFW", delete */
+        CHECK(g && history_nsfw_put(g, 0, 1, "Shows/Secret", 0, 0));
+        tr = g ? history_nsfw_load(g, &nt) : NULL;
+        CHECK(nt == 2 && tr[0].state == 0);
+        free(tr);
+        CHECK(g && history_nsfw_delete(g, 0, 1, "Shows/Secret", 0));
+        tr = g ? history_nsfw_load(g, &nt) : NULL;
+        CHECK(nt == 1);
+        free(tr);
+        if (g) history_close(g);
+        remove(V3); remove("thc_test_v3.db.v2.bak"); remove("thc_test_v3.db-wal"); remove("thc_test_v3.db-shm");
     }
     TEST_DONE();
 }

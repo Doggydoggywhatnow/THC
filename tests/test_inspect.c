@@ -67,7 +67,7 @@ int main(void)
     /* clean data, the tool's own program (no network imports): pass */
     int rc = run("%s --data insp_fx --exe %s", INSPECT_BIN, INSPECT_CLEAN);
     CHECK(rc == 0);
-    CHECK(strstr(out, "history.db") && strstr(out, "schema version: 2") && strstr(out, "history: 2 rows"));
+    CHECK(strstr(out, "history.db") && strstr(out, "schema version: 3") && strstr(out, "history: 2 rows"));
     CHECK(strstr(out, "Result: pass"));
     CHECK(strstr(out, "screenshots/Show-00_01_02.png"));     /* screenshots are listed with the other files THC writes (#25) */
     CHECK(!strstr(out, "Shows/A/a.mkv"));                  /* titles stay hidden by default */

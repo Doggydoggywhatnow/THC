@@ -33,6 +33,10 @@ add_executable(test_screenshots test_screenshots.c)
 target_link_libraries(test_screenshots PRIVATE thc_core)
 add_test(NAME screenshots COMMAND test_screenshots WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
+add_executable(test_nsfw test_nsfw.c)
+target_link_libraries(test_nsfw PRIVATE thc_core)
+add_test(NAME nsfw COMMAND test_nsfw WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
 add_executable(test_ontop test_ontop.c)
 target_link_libraries(test_ontop PRIVATE thc_core)
 add_test(NAME ontop COMMAND test_ontop)

@@ -37,6 +37,9 @@ const ActionInfo k_actions[ACT_COUNT] = {
     { "search", "Search music", "/" },
     { "video_ontop", "Video window on top", "Ctrl+T" },
     { "portal_screenshots", "Go to Screenshots", "4" },
+    { "nsfw_mark", "Mark as NSFW", "N" },
+    { "nsfw_panic", "NSFW panic key", "Ctrl+Shift+X" },
+    { "nsfw_tab", "Hide or show the NSFW tab", "Ctrl+Shift+H" },
 };
 
 /* ---- table-driven settings (the 0.2.0 additions) ---- */
@@ -61,6 +64,7 @@ static const char *const n_titles[] = { "full", "playing-only", NULL };
 static const char *const n_ontop[] = { "off", "playing", "always", NULL };
 static const char *const n_level[] = { "window", "system", NULL };
 static const char *const n_shot[] = { "png", "jpg", "webp", NULL };
+static const char *const n_nsfwtab[] = { "visible", "hidden", NULL };
 
 #define B(key, field, def) { key, ST_BOOL, offsetof(Settings, field), def, 0, 1, NULL, true }
 #define I(key, field, def, lo, hi) { key, ST_INT, offsetof(Settings, field), def, lo, hi, NULL, true }
@@ -90,6 +94,11 @@ static const SettingDef k_defs[] = {
     E("video_ontop", video_ontop, 0, n_ontop), E("video_ontop_macos_level", video_ontop_macos_level, 0, n_level),
     B("video_ontop_ignore_fullscreen", video_ontop_ignore_fullscreen, 1),
     E("screenshot_format", screenshot_format, 0, n_shot),
+    B("nsfw_enabled", nsfw_enabled, 0), E("nsfw_tab", nsfw_tab, 0, n_nsfwtab), B("nsfw_hide_stops_playback", nsfw_hide_stops_playback, 1),
+    B("nsfw_record_history", nsfw_record_history, 0), B("nsfw_clear_thumbs_on_exit", nsfw_clear_thumbs_on_exit, 1),
+    B("nsfw_confirm_before_open", nsfw_confirm_before_open, 0), B("nsfw_mask_titles", nsfw_mask_titles, 1),
+    B("nsfw_rules_enabled", nsfw_rules_enabled, 0), I("nsfw_roots", nsfw_roots, 0, 0, 1023),
+    I("nsfw_relock_minutes", nsfw_relock_minutes, 10, 0, 240),
 };
 #undef B
 #undef I
@@ -175,7 +184,7 @@ static bool key_known(const char *k)
         "setup_done", "music_dir", "video_dir", "books_dir", "sort_mode", "watched_threshold", "volume", "book_speed",
         "skip_seconds", "libmpv_path", "theme", "accent", "text_scale", "ui_scale", "font_path", "high_contrast",
         "reduced_motion", "screen_reader", "remember_history", "video_thumbs", "last_portal", "screenshot_dir",
-        "screenshot_template", NULL
+        "screenshot_template", "nsfw_rules", "nsfw_pin_salt", "nsfw_pin_hash", NULL
     };
     for (int i = 0; fixed[i]; i++)
         if (!strcmp(k, fixed[i])) return true;
@@ -240,6 +249,9 @@ bool settings_load(Settings *s, const char *path)
         else if (!strcmp(k, "last_portal")) s->last_portal = (int)clampd(atoi(v), 0, 3);
         else if (!strcmp(k, "screenshot_dir")) STR(screenshot_dir);
         else if (!strcmp(k, "screenshot_template")) STR(screenshot_template);
+        else if (!strcmp(k, "nsfw_rules")) STR(nsfw_rules);
+        else if (!strcmp(k, "nsfw_pin_salt")) STR(nsfw_pin_salt);
+        else if (!strcmp(k, "nsfw_pin_hash")) STR(nsfw_pin_hash);
         else if (parse_def(s, k, v, &seen_history_key)) { /* a table-driven setting */ }
         else if (!strncmp(k, "section.", 8)) {
             for (int i = 0; i < SECTION_COUNT; i++)
@@ -305,6 +317,9 @@ bool settings_save(const Settings *s, const char *path)
     }
     fprintf(f, "screenshot_dir = %s\n", s->screenshot_dir);
     fprintf(f, "screenshot_template = %s\n", s->screenshot_template);
+    fprintf(f, "nsfw_rules = %s\n", s->nsfw_rules);
+    fprintf(f, "nsfw_pin_salt = %s\n", s->nsfw_pin_salt);
+    fprintf(f, "nsfw_pin_hash = %s\n", s->nsfw_pin_hash);
     fprintf(f, "\n[hotkeys]\n");
     for (int i = 0; i < ACT_COUNT; i++) fprintf(f, "hotkey.%s = %s\n", k_actions[i].key, s->hotkey[i]);
     fprintf(f, "\n[state]\n");

@@ -12,6 +12,7 @@ struct History {
     sqlite3 *db;
     int newer_schema;   /* nonzero: the file was made by a newer THC */
     bool has_v2;        /* the version 2 columns and tables exist */
+    bool has_v3;        /* the nsfw_tags table exists */
     bool (*exists)(void *ud, const char *rel_path);   /* is this path still in the library? */
     void *exists_ud;
 };
@@ -30,7 +31,7 @@ struct History {
  * Never rename, drop or retype a column of an earlier version.
  * Version 1 is the 0.1.0 schema below; version 2 (0.2.0) adds kind, last_played and play_count to
  * history, and the plays and queue_backlog tables. */
-#define HISTORY_SCHEMA_VERSION 2
+#define HISTORY_SCHEMA_VERSION 3
 
 static const char *k_base_schema =
     "CREATE TABLE IF NOT EXISTS history ("
@@ -60,6 +61,12 @@ static const char *const k_migrations[] = {
     "CREATE TABLE IF NOT EXISTS queue_backlog ("
     "  queue INTEGER NOT NULL, ord INTEGER NOT NULL, rel_path TEXT NOT NULL, size INTEGER NOT NULL,"
     "  kind INTEGER NOT NULL DEFAULT 0, title TEXT, played_at INTEGER NOT NULL DEFAULT 0);",
+    /* 2 -> 3: NSFW tags (0.3.0). scope 0 = file (keyed by path and size), 1 = folder (path only);
+     * state 1 = NSFW, 0 = explicitly not NSFW. Only a table and an index are added. */
+    "CREATE TABLE IF NOT EXISTS nsfw_tags ("
+    "  id INTEGER PRIMARY KEY, root INTEGER NOT NULL, rel_path TEXT NOT NULL, scope INTEGER NOT NULL,"
+    "  size INTEGER NOT NULL DEFAULT 0, state INTEGER NOT NULL DEFAULT 1, created INTEGER NOT NULL DEFAULT 0);"
+    "CREATE UNIQUE INDEX IF NOT EXISTS nsfw_tags_key ON nsfw_tags(root, scope, rel_path, size);",
     NULL
 };
 
@@ -170,6 +177,7 @@ History *history_open_ex(const char *db_path, int target_version, const char *co
         }
     }
     h->has_v2 = pragma_int(h->db, "PRAGMA user_version;") >= 2;
+    h->has_v3 = pragma_int(h->db, "PRAGMA user_version;") >= 3;
     return h;
 }
 
@@ -667,4 +675,74 @@ bool history_backup_to(History *h, const char *dest_path)
     }
     sqlite3_close(dst);
     return ok;
+}
+
+/* ------------------------------------------------------------------------ */
+/* NSFW tags                                                                  */
+/* ------------------------------------------------------------------------ */
+
+bool history_nsfw_put(History *h, int root, int scope, const char *rel_path, int64_t size, int state)
+{
+    if (!h || !h->has_v3 || !rel_path) return false;
+    if (scope == 1) size = 0;                                  /* folder tags have no size */
+    sqlite3_stmt *st;
+    if (sqlite3_prepare_v2(h->db,
+            "INSERT INTO nsfw_tags(root, rel_path, scope, size, state, created) VALUES(?1,?2,?3,?4,?5,?6) "
+            "ON CONFLICT(root, scope, rel_path, size) DO UPDATE SET state=excluded.state",
+            -1, &st, NULL) != SQLITE_OK)
+        return false;
+    sqlite3_bind_int(st, 1, root);
+    sqlite3_bind_text(st, 2, rel_path, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int(st, 3, scope);
+    sqlite3_bind_int64(st, 4, size);
+    sqlite3_bind_int(st, 5, state ? 1 : 0);
+    sqlite3_bind_int64(st, 6, (int64_t)time(NULL));
+    bool ok = sqlite3_step(st) == SQLITE_DONE;
+    sqlite3_finalize(st);
+    return ok;
+}
+
+bool history_nsfw_delete(History *h, int root, int scope, const char *rel_path, int64_t size)
+{
+    if (!h || !h->has_v3 || !rel_path) return false;
+    if (scope == 1) size = 0;
+    sqlite3_stmt *st;
+    if (sqlite3_prepare_v2(h->db, "DELETE FROM nsfw_tags WHERE root=?1 AND scope=?2 AND rel_path=?3 AND size=?4", -1, &st, NULL) != SQLITE_OK)
+        return false;
+    sqlite3_bind_int(st, 1, root);
+    sqlite3_bind_int(st, 2, scope);
+    sqlite3_bind_text(st, 3, rel_path, -1, SQLITE_TRANSIENT);
+    sqlite3_bind_int64(st, 4, size);
+    bool ok = sqlite3_step(st) == SQLITE_DONE;
+    sqlite3_finalize(st);
+    return ok;
+}
+
+NsfwTagRow *history_nsfw_load(History *h, int *count)
+{
+    *count = 0;
+    if (!h || !h->has_v3) return NULL;
+    sqlite3_stmt *st;
+    if (sqlite3_prepare_v2(h->db, "SELECT root, scope, rel_path, size, state, created FROM nsfw_tags ORDER BY id", -1, &st, NULL) != SQLITE_OK)
+        return NULL;
+    int cap = 64, n = 0;
+    NsfwTagRow *rows = (NsfwTagRow *)malloc((size_t)cap * sizeof *rows);
+    while (rows && sqlite3_step(st) == SQLITE_ROW) {
+        if (n == cap) {
+            NsfwTagRow *grown = (NsfwTagRow *)realloc(rows, (size_t)cap * 2 * sizeof *rows);
+            if (!grown) break;
+            rows = grown;
+            cap *= 2;
+        }
+        NsfwTagRow *r = &rows[n++];
+        r->root = sqlite3_column_int(st, 0);
+        r->scope = sqlite3_column_int(st, 1);
+        snprintf(r->path, sizeof r->path, "%s", (const char *)sqlite3_column_text(st, 2));
+        r->size = sqlite3_column_int64(st, 3);
+        r->state = sqlite3_column_int(st, 4);
+        r->created = sqlite3_column_int64(st, 5);
+    }
+    sqlite3_finalize(st);
+    *count = n;
+    return rows;
 }

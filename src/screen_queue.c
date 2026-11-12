@@ -767,6 +767,7 @@ void queue_backlog_restore(App *a)
                 SDL_snprintf(full, sizeof full, "%s/%s", a->lib.path[r], rows[i].path);
                 SDL_PathInfo info;
                 if (!SDL_GetPathInfo(full, &info) || info.type != SDL_PATHTYPE_FILE) continue;
+                if (nsfw_hidden(a->nsfw, r, rows[i].path, false, (int64_t)info.size, NULL)) break;   /* never back into a normal queue */
                 it.kind = rows[i].kind;
                 it.root = r;
                 SDL_strlcpy(it.path, full, sizeof it.path);

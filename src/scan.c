@@ -106,10 +106,12 @@ bool scan_poll(App *a)
     if (a->scan_thread) SDL_WaitThread(a->scan_thread, NULL);
     a->scan_thread = NULL;
     a->scanning = false;
-    library_free(&a->lib);
-    a->lib = *a->scan_result;
+    tagcache_shutdown();
+    app_free_library(a);                 /* the old filtered copies and the old scan */
+    a->full = *a->scan_result;
     SDL_free(a->scan_result);
     a->scan_result = NULL;
+    app_nsfw_apply(a);                   /* a->lib / a->nlib from the new scan */
     a->lib_version++;
     return true;
 }

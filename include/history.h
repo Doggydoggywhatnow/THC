@@ -49,6 +49,20 @@ void history_close(History *h);
  * check set nothing is ever treated as moved: a moved file starts a fresh entry (#24). */
 void history_set_exists_check(History *h, bool (*exists)(void *ud, const char *rel_path), void *ud);
 
+/* NSFW tags (schema version 3). `root` is the app's library root index; scope 0 = a file (keyed by path and
+ * size), 1 = a folder (path only). state 1 = NSFW, 0 = explicitly not NSFW (beats an inherited tag). */
+typedef struct NsfwTagRow {
+    int root, scope;
+    char path[512];
+    int64_t size;
+    int state;
+    int64_t created;
+} NsfwTagRow;
+bool history_nsfw_put(History *h, int root, int scope, const char *rel_path, int64_t size, int state);
+bool history_nsfw_delete(History *h, int root, int scope, const char *rel_path, int64_t size);
+/* All tags, malloc'd (free it); NULL and *count = 0 if there are none or the database is older. */
+NsfwTagRow *history_nsfw_load(History *h, int *count);
+
 /* Write a consistent copy of the database to `dest_path` (SQLite's backup API; safe while open). */
 bool history_backup_to(History *h, const char *dest_path);
 

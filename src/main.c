@@ -194,6 +194,14 @@ void app_rebuild_library(App *a)
         roots[n++] = (LibraryRoot){ a->lib.root[ROOT_SECTION0 + i], ROOT_SECTION0 + i, i };
     library_clear(&a->vlib);
     library_build(&a->vlib, roots, n, &a->set);
+    /* the NSFW portal's own video library, from the NSFW-only trees */
+    LibraryRoot nroots[1 + SECTION_COUNT];
+    int nn = 0;
+    nroots[nn++] = (LibraryRoot){ a->nlib.root[ROOT_VIDEO], ROOT_VIDEO, -1 };
+    for (int i = 0; i < SECTION_COUNT; i++)
+        nroots[nn++] = (LibraryRoot){ a->nlib.root[ROOT_SECTION0 + i], ROOT_SECTION0 + i, i };
+    library_clear(&a->nvlib);
+    library_build(&a->nvlib, nroots, nn, &a->set);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -568,10 +576,10 @@ static bool history_exists_check(void *ud, const char *rel)
     App *a = ud;
     if (a->scanning) return true;
     bool any = false;
-    for (int r = 0; r < ROOT_COUNT; r++) {
-        if (!a->lib.root[r]) continue;
+    for (int r = 0; r < ROOT_COUNT; r++) {            /* the whole scan, NSFW items included */
+        if (!a->full.root[r]) continue;
         any = true;
-        if (fs_find(a->lib.root[r], rel)) return true;
+        if (fs_find(a->full.root[r], rel)) return true;
     }
     return !any;
 }
@@ -649,6 +657,7 @@ int main(int argc, char **argv)
     a->hist = history_open(db, err, sizeof err);
     if (!a->hist) SDL_Log("history database: %s", err);
     history_set_exists_check(a->hist, history_exists_check, a);
+    app_nsfw_init(a);
 
     a->have_mpv = mpv_dyn_load(&a->mpv, a->set.libmpv_path);
     if (!a->have_mpv) SDL_Log("libmpv not found: video playback is disabled");
@@ -710,7 +719,9 @@ int main(int argc, char **argv)
     app_save_settings(a);
     if (a->scan_thread) SDL_WaitThread(a->scan_thread, NULL);
     library_clear(&a->vlib);
-    library_free(&a->lib);
+    library_clear(&a->nvlib);
+    app_free_library(a);
+    app_nsfw_shutdown(a);
     history_close(a->hist);
     art_clear();
     ui_shutdown(&a->ui);
