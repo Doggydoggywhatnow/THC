@@ -1,5 +1,5 @@
 #!/bin/sh
-# Build THC-0.2.0-x86_64.AppImage. libmpv is not bundled: THC uses the
+# Build THC-0.3.0-x86_64.AppImage. libmpv is not bundled: THC uses the
 # system's libmpv (install mpv) for video; music works without it.
 set -eu
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
@@ -10,6 +10,6 @@ rm -rf "$B/AppDir"
 DESTDIR="$B/AppDir" cmake --install "$B"
 cd "$B"
 [ -x linuxdeploy ] || { curl -sSfL -o linuxdeploy https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage; chmod +x linuxdeploy; }
-APPIMAGE_EXTRACT_AND_RUN=1 LINUXDEPLOY_OUTPUT_VERSION=0.2.0 ./linuxdeploy --appdir AppDir \
+APPIMAGE_EXTRACT_AND_RUN=1 LINUXDEPLOY_OUTPUT_VERSION=0.3.0 ./linuxdeploy --appdir AppDir \
   -d AppDir/usr/share/applications/thc.desktop -i AppDir/usr/share/icons/hicolor/512x512/apps/thc.png --output appimage
 ls -1 THC-*.AppImage

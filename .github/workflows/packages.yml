@@ -55,7 +55,7 @@ jobs:
           cmake -S . -B build-inspect -DTHC_BUILD_APP=OFF -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
           cmake --build build-inspect --config Release --target thc-inspect
           mkdir out
-          copy build-inspect\Release\thc-inspect.exe out\thc-inspect-0.2.0-windows-x86_64.exe
+          copy build-inspect\Release\thc-inspect.exe out\thc-inspect-0.3.0-windows-x86_64.exe
       - uses: actions/upload-artifact@v4
         with: { name: inspect-windows, path: out/* }
 
@@ -67,7 +67,7 @@ jobs:
           cmake -S . -B build-inspect -DTHC_BUILD_APP=OFF -DCMAKE_BUILD_TYPE=Release
           cmake --build build-inspect --target thc-inspect test_inspect inspect_netuser inspect_clean
           ctest --test-dir build-inspect -R inspect --output-on-failure
-          mkdir -p out && cp build-inspect/thc-inspect out/thc-inspect-0.2.0-macos-$(uname -m)
+          mkdir -p out && cp build-inspect/thc-inspect out/thc-inspect-0.3.0-macos-$(uname -m)
       - uses: actions/upload-artifact@v4
         with: { name: inspect-macos, path: out/* }
 
@@ -80,17 +80,17 @@ jobs:
       - name: Build .apk with the APKBUILD
         run: |
           git config --global --add safe.directory "$PWD"
-          git archive --prefix=THC-0.2.0/ -o /tmp/thc-0.2.0.tar.gz HEAD
+          git archive --prefix=THC-0.3.0/ -o /tmp/thc-0.3.0.tar.gz HEAD
           mkdir -p /tmp/apk && cp packaging/alpine/APKBUILD /tmp/apk/
-          cp /tmp/thc-0.2.0.tar.gz /tmp/apk/
-          sed -i 's|^source=.*|source="thc-0.2.0.tar.gz"|' /tmp/apk/APKBUILD
+          cp /tmp/thc-0.3.0.tar.gz /tmp/apk/
+          sed -i 's|^source=.*|source="thc-0.3.0.tar.gz"|' /tmp/apk/APKBUILD
           cd /tmp/apk
           abuild-keygen -an
           cp ~/.config/abuild/*.rsa.pub /etc/apk/keys/
           abuild -F checksum
           abuild -F -r -P /tmp/repo
           mkdir -p $GITHUB_WORKSPACE/out
-          find /tmp/repo -name 'thc-*.apk' -exec cp {} $GITHUB_WORKSPACE/out/thc-0.2.0-r0-alpine-x86_64.apk \;
+          find /tmp/repo -name 'thc-*.apk' -exec cp {} $GITHUB_WORKSPACE/out/thc-0.3.0-r0-alpine-x86_64.apk \;
       - uses: actions/upload-artifact@v4
         with: { name: alpine, path: out/* }
 
@@ -109,7 +109,7 @@ jobs:
           cmake --build build
           DESTDIR=/tmp/destdir cmake --install build
           mkdir -p out && cd out
-          xbps-create -A x86_64 -n thc-0.2.0_1 -s "Lightweight player for the music and videos you already have" \
+          xbps-create -A x86_64 -n thc-0.3.0_1 -s "Lightweight player for the music and videos you already have" \
             -l Unlicense -H https://github.com/Doggydoggywhatnow/THC -D "mpv>=0 sqlite>=0" /tmp/destdir
           ls -l
       - uses: actions/upload-artifact@v4
@@ -132,10 +132,10 @@ jobs:
         run: |
           mkdir -p downloads
           # old versions go: the README links the current one
-          git rm -q -f --ignore-unmatch downloads/*0.1.3* 2>/dev/null || true
+          git rm -q -f --ignore-unmatch downloads/*0.2.0* downloads/*0.1.3* 2>/dev/null || true
           # a package that failed to build this time keeps its previous file
-          for f in dist/thc_0.2.0_amd64.deb dist/THC-*.AppImage dist/*.xbps dist/thc-0.2.0-linux-x86_64.tar.gz \
-                   dist/thc-0.2.0-r0-alpine-x86_64.apk dist/*.snap \
+          for f in dist/thc_0.3.0_amd64.deb dist/THC-*.AppImage dist/*.xbps dist/thc-0.3.0-linux-x86_64.tar.gz \
+                   dist/thc-0.3.0-r0-alpine-x86_64.apk dist/*.snap \
                    dist/thc-inspect-*; do
             [ -f "$f" ] && cp "$f" downloads/
           done

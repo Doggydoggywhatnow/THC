@@ -2,6 +2,24 @@
 
 THC uses `x.y.z` versions: major, minor (big features), patch (small features, fixes, security).
 
+## 0.3.0
+
+### Added
+- **NSFW portal** (#13), off by default and fully local. Mark files, episodes, movies, songs, albums, books, shows, seasons or any folder as NSFW (right-click menu, `N`, Undo); a folder mark covers files added later, a library folder can count as NSFW, and optional name rules mark more, never over an explicit "Not NSFW". Marked items leave the normal portals and show only in the NSFW tab (Video, Music, Audiobooks, Screenshots) with its own look and a beer-bottle XXX icon. The tab hides and shows in one action (`Ctrl+Shift+H`, its right-click menu, or Settings). Optional PIN lock (salted, iterated PBKDF2-HMAC-SHA-256; a courtesy lock, not security) with auto-relock. **Panic key** (`Ctrl+Shift+X`, also inside the MPV window) stops playback, closes the window, locks the portal and clears NSFW items from every queue. Nothing leaks: no history, plays or backlog; fixed window title, OSD and screenshot names; media keys and now-playing say only "Playing"; masked queue and bar; thumbnails and screenshots in their own folders, removed at exit; `thc-inspect` never prints NSFW names. History database schema 3 (a `nsfw_tags` table; older THC versions keep working).
+- **Screenshots** (#25): MPV's `S` key saves into THC's own `screenshots/` folder, and a new Screenshots tab shows them newest first (open the folder, copy the path, delete after confirming). Folder, format (PNG default, JPG, WebP) and name template are settings; THC controls `screenshot-directory`, `screenshot-format` and `screenshot-template`.
+- **Back up and restore** (#26): Settings, Privacy copies your settings and MPV setup (and, if you choose, history and screenshots) into a plain folder; restoring asks first, saves your current files into `pre-restore/` and applies the backup at the next start.
+- **Settings across releases** (#26): settings an older THC does not know are kept in `settings.ini` and written back unchanged, so a downgrade no longer drops them. The data folder is the same for every package (the Snap is documented as the exception).
+- **Performance baseline** (#12): the `THC_PERF` timing hook, `tools/perf` (synthetic libraries up to 50,000 files) and `docs/performance.md` with measured numbers and targets; a manual/nightly CI job runs the 1,000-file case.
+
+### Fixed
+- **History no longer takes another file's entry** (#24): a same-size file takes over a row only when the old path is really gone from the library, including for plays through the queue.
+- **Album order with untagged files** (#20): tagged tracks by disc and track, untagged ones after in file-name order, one order for the album list, the queue and Play; untagged rows show a dash instead of a made-up number.
+- **Video thumbnails no longer collide** (#22): the cache key includes the first and last 4 KB of the file, read once per session.
+- Tests no longer put the 283 KB settings on the stack (a Windows crash found by CI).
+
+### Not in this release
+- #6 (accessibility shaders) was the optional last slice and is left out; it stays open. Large cover images (#21) are planned for a later release. "Why is this NSFW" in the NSFW rows (#28). Relocking when the screen locks (SDL gives no event). The known gaps from 0.2.0 (see its entry).
+
 ## 0.2.0
 
 ### Added
