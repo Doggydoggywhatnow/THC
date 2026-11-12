@@ -21,6 +21,10 @@ add_executable(test_search test_search.c)
 target_link_libraries(test_search PRIVATE thc_core)
 add_test(NAME search COMMAND test_search)
 
+add_executable(test_mediakeys test_mediakeys.c)
+target_link_libraries(test_mediakeys PRIVATE thc_core)
+add_test(NAME mediakeys COMMAND test_mediakeys)
+
 add_executable(test_mpvconf test_mpvconf.c)
 target_link_libraries(test_mpvconf PRIVATE thc_core)
 add_test(NAME mpvconf COMMAND test_mpvconf)

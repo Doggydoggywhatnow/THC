@@ -7,6 +7,7 @@
  * The queue logic itself is in queue.c (no SDL); this file starts and stops backends and records
  * history. The player bar at the bottom is drawn here too. */
 #include "app.h"
+#include "mediakeys.h"
 #include "audio.h"
 #include "queue.h"
 
@@ -647,6 +648,10 @@ bool music_is_current(App *a, const FsNode *track)
 /* Frame work                                                                 */
 /* ------------------------------------------------------------------------ */
 
+static void media_init(App *a);
+static void media_pump(App *a);
+static void media_shutdown(void);
+
 void music_init(App *a)
 {
     (void)a;
@@ -657,12 +662,14 @@ void music_init(App *a)
         Q[i].shuffle = a->set.queue_shuffle;
     }
     P.seek_preview = -1;
+    media_init(a);
     P.last_tick = SDL_GetTicks() / 1000.0;
 }
 
 void music_shutdown(App *a)
 {
     flush_progress(a);
+    media_shutdown();
     stop_video_window(a);
     stop_audio(a);
     audio_shutdown();
@@ -750,6 +757,7 @@ void music_pump(App *a)
             app_toast(a, "Sleep timer: paused");
         }
     }
+    media_pump(a);
 }
 
 bool music_hotkey(App *a, Action act)
@@ -769,6 +777,98 @@ bool music_hotkey(App *a, Action act)
         return true;
     default: return false;
     }
+}
+
+
+/* ------------------------------------------------------------------------ */
+/* Media keys and now playing                                                 */
+/* ------------------------------------------------------------------------ */
+
+static const MediaBackend *MB;
+static App *mb_app;
+static NowPlaying mb_last;
+static bool mb_have_last;
+
+static void media_action(int act, double arg, void *ud)
+{
+    App *a = ud;
+    switch (act) {
+    case MKA_PLAY: set_paused(a, false); break;
+    case MKA_PAUSE: set_paused(a, true); break;
+    case MKA_TOGGLE: set_paused(a, !is_paused(a)); break;
+    case MKA_NEXT: player_next(a); break;
+    case MKA_PREV: player_prev(a); break;
+    case MKA_STOP: player_stop(a); break;
+    case MKA_SEEK_REL: seek_to(a, pos_now(a) + arg); break;
+    case MKA_SEEK_ABS: seek_to(a, arg); break;
+    default: break;
+    }
+}
+
+/* Keyboard media keys while THC's window has focus (every platform; the backend covers the rest). */
+bool music_media_key(App *a, SDL_Keycode k)
+{
+    if (a->set.mediakeys_mode == KEYS_OFF || (!have_item(a) && !AQ()->n)) return false;
+    int act = 0;
+    switch (k) {
+    case SDLK_MEDIA_PLAY: act = MKA_PLAY; break;
+    case SDLK_MEDIA_PAUSE: act = MKA_PAUSE; break;
+    case SDLK_MEDIA_PLAY_PAUSE: act = MKA_TOGGLE; break;
+    case SDLK_MEDIA_NEXT_TRACK: act = MKA_NEXT; break;
+    case SDLK_MEDIA_PREVIOUS_TRACK: act = MKA_PREV; break;
+    case SDLK_MEDIA_STOP: act = MKA_STOP; break;
+    case SDLK_MEDIA_FAST_FORWARD:
+        seek_to(a, pos_now(a) + mediakeys_seek_seconds(&a->set, book_mode() ? KIND_BOOK : KIND_MUSIC));
+        return true;
+    case SDLK_MEDIA_REWIND:
+        seek_to(a, pos_now(a) - mediakeys_seek_seconds(&a->set, book_mode() ? KIND_BOOK : KIND_MUSIC));
+        return true;
+    default: return false;
+    }
+    media_action(act, 0, a);
+    return true;
+}
+
+static void media_init(App *a)
+{
+    MB = mediakeys_linux_backend();
+    mb_app = a;
+    if (MB && !MB->init(media_action, a)) MB = NULL;
+    if (MB) SDL_Log("media keys: %s", MB->name);
+}
+
+static void media_pump(App *a)
+{
+    if (!MB) return;
+    const QueueItem *it = cur_item();
+    int kind = !it ? KIND_MUSIC : it->kind == QK_VIDEO ? KIND_VIDEO : it->kind == QK_BOOK ? KIND_BOOK : KIND_MUSIC;
+    NowPlaying np;
+    /* items keep "artist · album" in one field; the system wants them apart */
+    char artist[160] = "", album[160] = "";
+    if (it) {
+        SDL_strlcpy(artist, it->sub, sizeof artist);
+        char *sep = SDL_strstr(artist, " \xC2\xB7 ");
+        if (sep) {
+            *sep = 0;
+            SDL_strlcpy(album, sep + 3, sizeof album);
+        }
+    }
+    mediakeys_build(&np, &a->set, kind, have_item(a), !is_paused(a), it ? it->title : "", artist, album,
+                    it ? it->art : "", pos_now(a), dur_now(a));
+    if (a->set.mediakeys_mode != KEYS_GLOBAL) np.claimed = false;   /* "focused": only THC's own window */
+    if (!mb_have_last || memcmp(&np, &mb_last, sizeof np) != 0) {
+        MB->update(&np);
+        mb_last = np;
+        mb_have_last = true;
+    }
+    MB->pump();
+}
+
+static void media_shutdown(void)
+{
+    if (MB) MB->shutdown();
+    MB = NULL;
+    (void)mb_app;
 }
 
 /* ------------------------------------------------------------------------ */

@@ -126,6 +126,7 @@ add_library(thc_core STATIC
   src/fstree.c
   src/history.c
   src/library.c
+  src/mediakeys.c
   src/mpvconf.c
   src/queue.c
   src/search.c
@@ -157,6 +158,7 @@ if(THC_BUILD_APP)
     src/audio.c
     src/chrome.c
     src/hotkeys.c
+    src/mediakeys_linux.c
     src/mpv_dyn.c
     src/player.c
     src/portal_books.c

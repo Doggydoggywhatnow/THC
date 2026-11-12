@@ -420,8 +420,26 @@ static void page_queue(App *a, Layout *L)
 
 static void page_system(App *a, Layout *L)
 {
-    (void)a;
-    group(a, L, "System", "How THC fits in with the rest of your computer. More options arrive with each feature.");
+    Settings *s = &a->set;
+    group(a, L, "Media keys", "Play, pause, next and previous from your keyboard, headset and the desktop's media controls.");
+    static const char *const modes[] = { "Off", "THC focused", "System-wide" };
+    choice(a, L, "set-mk-mode", "Media keys", modes, 3, &s->mediakeys_mode);
+    float sk = (float)s->mediakeys_seek_seconds;
+    if (ui_slider(&a->ui, ui_id("set-mk-seek"), next_row(a, L, 0), "Fast-forward and rewind keys", &sk, 5, 60, 5, "%.0f s")) {
+        s->mediakeys_seek_seconds = (int)sk;
+        app_save_settings(a);
+    }
+    note(a, L, ICON_SPARK,
+         "System-wide works through MPRIS on Linux (needs libdbus). On Windows and macOS the keys work while THC's window is focused.");
+
+    group(a, L, "Now playing", "What your desktop, lock screen and other apps can see about what THC is playing.");
+    tog(a, L, "set-np-music", "Show music", "Title, artist and album", &s->nowplaying_music);
+    tog(a, L, "set-np-books", "Show audiobooks", "Title and author", &s->nowplaying_books);
+    tog(a, L, "set-np-video", "Show video", "Off by default, so what you watch is not shown on lock screens",
+        &s->nowplaying_video);
+    tog(a, L, "set-np-art", "Show cover art", "Only for items shown above", &s->nowplaying_art);
+    static const char *const titles[] = { "Title, artist and album", "Title only" };
+    choice(a, L, "set-np-titles", "Details shown", titles, 2, &s->nowplaying_titles);
 }
 
 static void page_hotkeys(App *a, Layout *L)

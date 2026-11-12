@@ -146,6 +146,7 @@ bool music_busy(App *a);
 float music_bar_height(App *a);
 void music_bar(App *a);
 bool music_hotkey(App *a, Action act);
+bool music_media_key(App *a, SDL_Keycode k);
 void music_play_folder(App *a, int root, const FsNode *dir, int track_index);
 bool music_is_current(App *a, const FsNode *track);
 /* Playable files of a folder in play order: by disc and track number from their tags when

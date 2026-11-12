@@ -519,6 +519,7 @@ static void handle_event(App *a, SDL_Event *ev)
     bool used = ui_event(ui, ev);
     if (ev->type == SDL_EVENT_KEY_DOWN && !used) {
         SDL_Keycode k = ev->key.key;
+        if (music_media_key(a, k)) return;
         if (a->confirm.open) {
             if (k == SDLK_ESCAPE) a->confirm.open = false;
             return;
