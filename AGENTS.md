@@ -53,3 +53,6 @@ No mockups exist. Design the UI yourself to match the README's values: visually 
 
 ## History compatibility
 Every version of THC must read and write the history database of every other version. Change the schema only by adding a numbered migration in `src/history.c` (only add columns that are nullable or have a DEFAULT, plus tables and indexes; never rename, drop or retype a column), bump `HISTORY_SCHEMA_VERSION`, and extend `tests/test_history_compat.c`. Never reset `user_version` or delete a user's database.
+
+## Settings compatibility
+Every version of THC must keep the settings of every other version. Never rename or remove a key in `settings.ini`; to change one, add a new key and migrate the old value on load. Keep keys THC does not recognize and write them back unchanged on save, so a downgrade does not lose newer settings. Extend `tests/test_settings.c` with every change.
