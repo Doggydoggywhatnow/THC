@@ -13,6 +13,10 @@ add_executable(test_history_compat test_history_compat.c)
 target_link_libraries(test_history_compat PRIVATE thc_core)
 add_test(NAME history_compat COMMAND test_history_compat WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
+add_executable(test_queue test_queue.c)
+target_link_libraries(test_queue PRIVATE thc_core)
+add_test(NAME queue COMMAND test_queue WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
 add_executable(test_mpvconf test_mpvconf.c)
 target_link_libraries(test_mpvconf PRIVATE thc_core)
 add_test(NAME mpvconf COMMAND test_mpvconf)
