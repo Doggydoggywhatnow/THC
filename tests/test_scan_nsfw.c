@@ -13,8 +13,9 @@ static void touch(const char *base, const char *rel, const char *data)
     snprintf(p, sizeof p, "%s/%s", base, rel);
     for (char *s = p + strlen(base) + 1; *s; s++)
         if (*s == '/') { *s = 0; SDL_CreateDirectory(p); *s = '/'; }
-    FILE *f = fopen(p, "wb");
-    if (f) { fputs(data, f); fclose(f); }
+    /* SDL's file calls take UTF-8 paths on every OS (fopen does not on Windows) */
+    SDL_IOStream *f = SDL_IOFromFile(p, "wb");
+    if (f) { SDL_WriteIO(f, data, strlen(data)); SDL_CloseIO(f); }
 }
 
 static bool has(const FsNode *root, const char *rel)
@@ -26,10 +27,10 @@ static bool unchanged(const char *base, const char *rel, const char *want)
 {
     char p[1024], buf[64] = { 0 };
     snprintf(p, sizeof p, "%s/%s", base, rel);
-    FILE *f = fopen(p, "rb");
+    SDL_IOStream *f = SDL_IOFromFile(p, "rb");
     if (!f) return false;
-    size_t n = fread(buf, 1, sizeof buf - 1, f);
-    fclose(f);
+    size_t n = SDL_ReadIO(f, buf, sizeof buf - 1);
+    SDL_CloseIO(f);
     buf[n] = 0;
     return !strcmp(buf, want);
 }
