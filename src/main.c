@@ -506,6 +506,21 @@ static void debug_script(App *a, Uint64 frame_no)
     a->running = false;
 }
 
+/* History asks whether a path is still in the library before it lets a "moved" file take a row (#24).
+ * While a scan runs, or before the first one, nothing can be said, so the answer is "yes, it exists". */
+static bool history_exists_check(void *ud, const char *rel)
+{
+    App *a = ud;
+    if (a->scanning) return true;
+    bool any = false;
+    for (int r = 0; r < ROOT_COUNT; r++) {
+        if (!a->lib.root[r]) continue;
+        any = true;
+        if (fs_find(a->lib.root[r], rel)) return true;
+    }
+    return !any;
+}
+
 static void handle_event(App *a, SDL_Event *ev)
 {
     Ui *ui = &a->ui;
@@ -573,6 +588,7 @@ int main(int argc, char **argv)
     SDL_snprintf(db, sizeof db, "%shistory.db", a->data_dir);
     a->hist = history_open(db, err, sizeof err);
     if (!a->hist) SDL_Log("history database: %s", err);
+    history_set_exists_check(a->hist, history_exists_check, a);
 
     a->have_mpv = mpv_dyn_load(&a->mpv, a->set.libmpv_path);
     if (!a->have_mpv) SDL_Log("libmpv not found: video playback is disabled");

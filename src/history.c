@@ -12,6 +12,8 @@ struct History {
     sqlite3 *db;
     int newer_schema;   /* nonzero: the file was made by a newer THC */
     bool has_v2;        /* the version 2 columns and tables exist */
+    bool (*exists)(void *ud, const char *rel_path);   /* is this path still in the library? */
+    void *exists_ud;
 };
 
 /* Two durations are "the same file" if they differ by less than this. */
@@ -216,8 +218,16 @@ static int64_t find_exact(History *h, const char *path, int64_t size, HistoryEnt
     return id;
 }
 
+void history_set_exists_check(History *h, bool (*exists)(void *ud, const char *rel_path), void *ud)
+{
+    if (!h) return;
+    h->exists = exists;
+    h->exists_ud = ud;
+}
+
 /* A moved or renamed file: same size, different path. If `duration` > 0 the
- * stored duration must match too. Only an unambiguous match counts. */
+ * stored duration must match too. Only an unambiguous match counts, and only when the old path is
+ * gone from the library (needs the check from history_set_exists_check; without it nothing moves). */
 static int64_t find_moved(History *h, const char *path, int64_t size, double duration,
                           HistoryEntry *out)
 {
@@ -226,7 +236,7 @@ static int64_t find_moved(History *h, const char *path, int64_t size, double dur
     int matches = 0;
     if (size <= 0) return 0;
     if (sqlite3_prepare_v2(h->db,
-            "SELECT id, duration, position, watched, watch_count, updated "
+            "SELECT id, duration, position, watched, watch_count, updated, path "
             "FROM history WHERE size=?1 AND path<>?2 ORDER BY updated DESC", -1, &st, NULL) != SQLITE_OK)
         return 0;
     sqlite3_bind_int64(st, 1, size);
@@ -234,6 +244,9 @@ static int64_t find_moved(History *h, const char *path, int64_t size, double dur
     while (sqlite3_step(st) == SQLITE_ROW) {
         double d = sqlite3_column_double(st, 1);
         if (duration > 0 && d > 0 && fabs(d - duration) >= DURATION_MATCH_SECONDS) continue;
+        /* a file that is still in the library was not moved: its row is not ours to take (#24) */
+        const char *old_path = (const char *)sqlite3_column_text(st, 6);
+        if (!h->exists || !old_path || h->exists(h->exists_ud, old_path)) continue;
         if (++matches > 1) { id = 0; break; }
         id = sqlite3_column_int64(st, 0);
         if (out) read_entry(st, 1, out);

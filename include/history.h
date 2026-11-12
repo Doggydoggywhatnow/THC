@@ -43,6 +43,12 @@ History *history_open_ex(const char *db_path, int target_version, const char *co
 int history_schema_version(History *h);
 void history_close(History *h);
 
+/* A moved or renamed file keeps its history only when its old path is gone from the library.
+ * History cannot see the library, so the app installs this check: it returns true while `rel_path`
+ * still exists (in any root) or when it cannot tell (for example while a scan is running). With no
+ * check set nothing is ever treated as moved: a moved file starts a fresh entry (#24). */
+void history_set_exists_check(History *h, bool (*exists)(void *ud, const char *rel_path), void *ud);
+
 /* Look up a file. Returns false if there is no history for it. */
 bool history_get(History *h, const char *rel_path, int64_t size, HistoryEntry *out);
 

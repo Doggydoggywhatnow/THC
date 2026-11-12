@@ -40,6 +40,8 @@ static const char *k_v1 =
     " VALUES('Show/S1/E1.mkv',1000,1400,700,0,0,111),('Movie.mkv',5000,7000,7000,1,1,222);"
     "PRAGMA user_version=1;";
 
+static bool no_such_path(void *ud, const char *rel) { (void)ud; (void)rel; return false; }
+
 int main(void)
 {
     char err[256];
@@ -172,5 +174,35 @@ int main(void)
     CHECK(history_remove(h, "Books/Author/b.m4b", 222) && !history_get(h, "Books/Author/b.m4b", 222, &e));
     history_close(h);
     clean();
+    /* #24 through the queue's play path: an album of same-size tracks keeps one history row per
+     * track, with or without an exists check (the old code merged them into three rows of four) */
+    {
+        char err2[256];
+        remove("thc_test_samesize.db");
+        History *g = history_open("thc_test_samesize.db", err2, sizeof err2);
+        CHECK(g != NULL);
+        if (g) {
+            for (int pass = 0; pass < 2; pass++) {
+                if (pass == 1) history_set_exists_check(g, no_such_path, NULL);   /* "everything is gone" */
+                for (int t = 1; t <= 4; t++) {
+                    char p[64];
+                    snprintf(p, sizeof p, "Music/Same/Album/t%d_%d.flac", pass, t);
+                    CHECK(history_record_play(g, p, 777, KIND_MUSIC, 100));
+                }
+            }
+            HistoryRow rows[16];
+            CHECK(history_in_progress(g, rows, 16) >= 0);
+            int plays = 0;
+            for (int pass = 0; pass < 2; pass++)
+                for (int t = 1; t <= 4; t++) {
+                    char p[64];
+                    snprintf(p, sizeof p, "Music/Same/Album/t%d_%d.flac", pass, t);
+                    if (history_play_count(g, p, 777) == 1) plays++;
+                }
+            CHECK(plays >= 4);     /* pass 0 (no check): every track has its own row */
+            history_close(g);
+            remove("thc_test_samesize.db");
+        }
+    }
     TEST_DONE();
 }
