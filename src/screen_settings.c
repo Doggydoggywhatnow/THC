@@ -189,6 +189,20 @@ static void page_library(App *a, Layout *L)
     }
     L->y += dp(ui, 46) + L->gap;
     group(a, L, "Library", NULL);
+    group(a, L, "Music search", "Search matches artists, albums and songs, ignoring case and accents, and forgives one typo. Audiobooks are never included.");
+    {
+        Settings *st = &a->set;
+        if (ui_toggle(ui, ui_id("set-s-remember"), next_row(a, L, dp(ui, 72)), "Remember my search scope", "Otherwise search always starts with All", &st->search_remember_scope))
+            app_save_settings(a);
+        float per = (float)st->search_results_per_group;
+        if (ui_slider(ui, ui_id("set-s-per"), next_row(a, L, 0), "Results per group", &per, 3, 20, 1, "%.0f")) {
+            st->search_results_per_group = (int)per;
+            app_save_settings(a);
+        }
+        if (ui_toggle(ui, ui_id("set-s-clear"), next_row(a, L, dp(ui, 72)), "Clear the search when I leave Music", NULL, &st->search_clear_on_leave))
+            app_save_settings(a);
+    }
+    L->y += dp(ui, 8);
     if (ui_button(ui, ui_id("set-rescan"), (SDL_FRect){ L->x, L->y, dp(ui, 200), dp(ui, 46) }, "Rescan now", ICON_SORT, false)) {
         app_rescan(a);
         app_toast(a, "Rescanning your library");

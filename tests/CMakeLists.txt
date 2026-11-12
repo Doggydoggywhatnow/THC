@@ -17,6 +17,10 @@ add_executable(test_queue test_queue.c)
 target_link_libraries(test_queue PRIVATE thc_core)
 add_test(NAME queue COMMAND test_queue WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
+add_executable(test_search test_search.c)
+target_link_libraries(test_search PRIVATE thc_core)
+add_test(NAME search COMMAND test_search)
+
 add_executable(test_mpvconf test_mpvconf.c)
 target_link_libraries(test_mpvconf PRIVATE thc_core)
 add_test(NAME mpvconf COMMAND test_mpvconf)

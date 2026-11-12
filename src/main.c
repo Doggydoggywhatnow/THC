@@ -144,6 +144,7 @@ void app_go(App *a, Screen s)
         if (s == SCREEN_BOOKS) nav_reset(&a->bnav);
         return;
     }
+    if (a->screen == SCREEN_MUSIC && a->set.search_clear_on_leave) music_search_clear();
     if (s >= SCREEN_VIDEO && s <= SCREEN_BOOKS) {
         a->last_portal = s;
         a->set.last_portal = s - SCREEN_VIDEO;
@@ -304,6 +305,11 @@ static bool handle_hotkey(App *a, const SDL_KeyboardEvent *k)
         case ACT_PORTAL_BOOKS: app_go(a, SCREEN_BOOKS); return true;
         case ACT_SETTINGS: app_go(a, SCREEN_SETTINGS); return true;
         case ACT_TOGGLE_THEME: toggle_theme(a); return true;
+        case ACT_SEARCH:
+            app_go(a, SCREEN_MUSIC);
+            nav_reset(&a->mnav);
+            music_search_focus(a);
+            return true;
         case ACT_RESCAN: app_rescan(a); app_toast(a, "Rescanning your library"); return true;
         case ACT_TEXT_BIGGER: change_text(a, 0.1f); return true;
         case ACT_TEXT_SMALLER: change_text(a, -0.1f); return true;
@@ -439,6 +445,13 @@ static void debug_script(App *a, Uint64 frame_no)
         keys += n + (keys[n] == ',');
         SDL_Event ev;
         SDL_zero(ev);
+        if (!SDL_strncmp(name, "text:", 5)) {
+            ev.type = SDL_EVENT_TEXT_INPUT;
+            ev.text.text = SDL_strdup(name + 5);
+            SDL_PushEvent(&ev);
+            next = frame_no + 8;
+            return;
+        }
         if (!SDL_strncmp(name, "wait", 4)) {
             next = frame_no + 60;
             return;

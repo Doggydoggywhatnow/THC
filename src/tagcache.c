@@ -16,6 +16,7 @@ static struct {
     int slots;
     SDL_Thread *thr;
     SDL_AtomicInt cancel;
+    SDL_AtomicInt done;   /* files read so far */
     Uint32 wake;
 } T;
 
@@ -79,6 +80,7 @@ static int SDLCALL worker(void *unused)
         if (SDL_GetAtomicInt(&T.cancel)) break;
         tags_read(T.path[i], &T.info[i]);
         SDL_SetAtomicInt(&T.ready[i], 1);
+        SDL_AddAtomicInt(&T.done, 1);
         if ((i & 31) == 31 || i == T.n - 1) {
             SDL_Event ev;
             SDL_zero(ev);
@@ -130,6 +132,8 @@ void tagcache_start(App *a)
     SDL_SetAtomicInt(&T.cancel, 0);
     T.thr = SDL_CreateThread(worker, "thc-tags", NULL);
 }
+
+int tagcache_done(void) { return SDL_GetAtomicInt(&T.done); }
 
 const TagInfo *tag_get(const App *a, int root, const FsNode *file)
 {

@@ -159,6 +159,10 @@ static inline void ctx_pos(const Ui *ui, SDL_FRect r, float *x, float *y)
     else { *x = ui->mx; *y = ui->my; }
 }
 
+/* portal_music.c: search */
+void music_search_focus(App *a);
+void music_search_clear(void);
+
 /* screen_queue.c: the queue panel, the right-click menu, adding, export/import, backlog */
 float queue_panel_width(App *a);
 void queue_panel(App *a, SDL_FRect rect);
@@ -191,6 +195,7 @@ void library_free(Library *lib);
 void tagcache_start(App *a);
 void tagcache_shutdown(void);
 const TagInfo *tag_get(const App *a, int root, const FsNode *file);
+int tagcache_done(void);   /* files read so far (the search index rebuilds as this grows) */
 /* "tag:<path>" key for art_get, if the file has an embedded cover. */
 bool tag_art_key(const App *a, int root, const FsNode *file, char *buf, size_t cap);
 

@@ -1,6 +1,8 @@
 /* portal_music.c: the music portal ("Vinyl" look): Artist -> Album -> Track. */
 #include "app.h"
 
+#include "search.h"
+
 #include <string.h>
 
 static void title_of(const char *name, char *out, size_t cap)
@@ -309,6 +311,197 @@ static float track_list(App *a, const FsNode *dir, float x, float y, float w)
     return y - y0;
 }
 
+
+/* ---- search ---- */
+
+static char g_query[128];
+static char g_shown[128];              /* the query the results were computed for */
+static double g_typed_at;              /* when the query last changed */
+static int g_scope = SCOPE_ALL;
+static bool g_scope_loaded;
+static SearchIndex g_idx;
+static bool g_idx_built;
+static Uint64 g_idx_lib;
+static int g_idx_tags;
+static SearchHit g_hits[SK_COUNT][20];
+static int g_nhits[SK_COUNT];
+
+void music_search_clear(void)
+{
+    g_query[0] = 0;
+    g_shown[0] = 0;
+    for (int k = 0; k < SK_COUNT; k++) g_nhits[k] = 0;
+}
+
+void music_search_focus(App *a)
+{
+    a->ui.keyboard_mode = true;
+    ui_focus(&a->ui, ui_id("music-search"));
+}
+
+static void index_dir(App *a, const FsNode *dir, int depth)
+{
+    for (int i = 0; i < dir->nkids; i++) {
+        const FsNode *k = dir->kids[i];
+        if (k->dir) {
+            if (count_audio(k) == 0) continue;
+            int albums = 0;
+            for (int j = 0; j < k->nkids; j++) albums += k->kids[j]->dir && count_audio(k->kids[j]) > 0;
+            bool has_tracks = false;
+            for (int j = 0; j < k->nkids; j++) has_tracks |= is_audio(k->kids[j]);
+            if (depth == 0 && albums > 0) search_index_add(&g_idx, SK_ARTIST, k->name, NULL, (void *)k);
+            if (has_tracks || depth > 0) search_index_add(&g_idx, SK_ALBUM, k->name, k->parent && k->parent->parent ? k->parent->name : NULL, (void *)k);
+            index_dir(a, k, depth + 1);
+        } else if (is_audio(k)) {
+            const TagInfo *tg = tag_get(a, ROOT_MUSIC, k);
+            char name[256], extra[600], title[256];
+            title_of(k->name, title, sizeof title);
+            SDL_strlcpy(name, tg && tg->title[0] ? tg->title : title, sizeof name);
+            extra[0] = 0;
+            if (tg) {
+                SDL_strlcat(extra, tg->artist, sizeof extra);
+                SDL_strlcat(extra, " ", sizeof extra);
+                SDL_strlcat(extra, tg->album, sizeof extra);
+            }
+            if (!extra[0] && dir->parent) {
+                SDL_strlcpy(extra, dir->name, sizeof extra);
+                if (dir->parent->parent) { SDL_strlcat(extra, " ", sizeof extra); SDL_strlcat(extra, dir->parent->name, sizeof extra); }
+            }
+            search_index_add(&g_idx, SK_SONG, name, extra, (void *)k);
+        }
+    }
+}
+
+/* Audiobooks are never in this index: it only reads the music folder. */
+static void search_refresh(App *a, double now)
+{
+    const FsNode *root = a->lib.root[ROOT_MUSIC];
+    int tags = tagcache_done() / 64;
+    if (!g_idx_built || g_idx_lib != a->lib_version || g_idx_tags != tags) {
+        search_index_clear(&g_idx);
+        search_index_init(&g_idx);
+        if (root) index_dir(a, root, 0);
+        g_idx_built = true;
+        g_idx_lib = a->lib_version;
+        g_idx_tags = tags;
+        g_shown[0] = 0;           /* recompute the results */
+    }
+    /* search as you type, after a short pause */
+    if (strcmp(g_query, g_shown) && now - g_typed_at > 0.12) {
+        SDL_strlcpy(g_shown, g_query, sizeof g_shown);
+        int per = SDL_clamp(a->set.search_results_per_group, 3, 20);
+        for (int k = 0; k < SK_COUNT; k++) g_nhits[k] = search_query(&g_idx, g_query, k, g_scope, g_hits[k], per);
+    }
+}
+
+static float search_bar(App *a, float x, float y, float w)
+{
+    Ui *ui = &a->ui;
+    if (!g_scope_loaded) {
+        g_scope_loaded = true;
+        g_scope = a->set.search_remember_scope ? a->set.search_last_scope : SCOPE_ALL;
+    }
+    float h = dp(ui, 46);
+    float y_start = y;
+    float fw = SDL_min(w, dp(ui, 460));
+    char before[128];
+    SDL_strlcpy(before, g_query, sizeof before);
+    SDL_FRect field = { x, y, fw, h };
+    ui_textfield(ui, ui_id("music-search"), field, g_query, sizeof g_query, "Search artists, albums and songs   (/)");
+    if (strcmp(before, g_query)) g_typed_at = ui->time;
+    if (g_query[0] && ui_icon_button(ui, ui_id("music-search-clear"), (SDL_FRect){ x + fw - dp(ui, 44), y + (h - dp(ui, 36)) / 2, dp(ui, 36), dp(ui, 36) },
+                                     ICON_CLOSE, "Clear the search"))
+        music_search_clear();
+    static const char *const names[] = { "All", "Artists", "Albums", "Songs" };
+    float px = x + fw + dp(ui, 14);
+    for (int i = 0; i < 4; i++) {
+        float pw = ui_text_w(ui, FONT_BOLD, TS_BODY, names[i]) + dp(ui, 30);
+        if (px + pw > x + w && i > 0) { px = x; y += h + dp(ui, 8); }
+        if (ui_pill(ui, ui_idi("search-scope", i), (SDL_FRect){ px, y + dp(ui, 6), pw, dp(ui, 34) }, names[i], g_scope == i)) {
+            g_scope = i;
+            g_shown[0] = 0;
+            if (a->set.search_remember_scope) { a->set.search_last_scope = i; app_save_settings(a); }
+        }
+        px += pw + dp(ui, 8);
+    }
+    return y + h - y_start;
+}
+
+static float search_results(App *a, float x, float y, float w)
+{
+    Ui *ui = &a->ui;
+    const Theme *t = &ui->th;
+    float y0 = y;
+    int total = g_nhits[0] + g_nhits[1] + g_nhits[2];
+    if (total == 0) {
+        char msg[200];
+        SDL_snprintf(msg, sizeof msg, "Nothing found for \"%s\".", g_query);
+        ui_text_fit(ui, FONT_BOLD, TS_LABEL, x, y, w, t->text, msg);
+        y += ui_line_h(ui, TS_LABEL);
+        ui_text_fit(ui, FONT_REGULAR, TS_BODY, x, y, w, t->text_dim, "Try fewer letters, or search in All.");
+        return y + ui_line_h(ui, TS_BODY) - y0;
+    }
+    static const char *const heads[SK_COUNT] = { "Artists", "Albums", "Songs" };
+    for (int k = 0; k < SK_COUNT; k++) {
+        if (!g_nhits[k]) continue;
+        draw_heading(a, x, y, heads[k], NULL);
+        y += ui_line_h(ui, TS_TITLE) + dp(ui, 14);
+        if (k == SK_SONG) {
+            float rh = dp(ui, 58);
+            for (int i = 0; i < g_nhits[k]; i++) {
+                const SearchEntry *e = &g_idx.e[g_hits[k][i].entry];
+                const FsNode *f = e->ref;
+                SDL_FRect r = { x, y, w, rh - dp(ui, 4) };
+                Uint32 id = ui_idp("sres", f);
+                UiItemState st = ui_item(ui, id, r);
+                if (st.focused || st.hover) { a->focus_file = f; a->focus_root = ROOT_MUSIC; }
+                if (st.context) {
+                    float qx, qy;
+                    ctx_pos(ui, r, &qx, &qy);
+                    queue_menu_item(a, qx, qy, ROOT_MUSIC, f);
+                }
+                if (ui_visible(ui, r)) {
+                    float hv = ui_anim_id(ui, id, (st.hover || st.focused) ? 1.0f : 0.0f, 16);
+                    ui_fill(ui, r, color_mix(t->surface, t->surface_hi, hv), dp(ui, 12));
+                    if (st.focused) ui_focus_ring(ui, r, dp(ui, 12));
+                    ui_icon(ui, hv > 0.5f ? ICON_PLAY : ICON_NOTE, (SDL_FRect){ r.x + dp(ui, 16), r.y + (r.h - dp(ui, 20)) / 2, dp(ui, 20), dp(ui, 20) }, hv > 0.5f ? t->accent : t->text_dim);
+                    ui_text_fit(ui, FONT_BOLD, TS_BODY, r.x + dp(ui, 52), r.y + dp(ui, 8), r.w - dp(ui, 68), t->text, e->name);
+                    const TagInfo *tg = tag_get(a, ROOT_MUSIC, f);
+                    char sub[300];
+                    if (tg && (tg->artist[0] || tg->album[0])) SDL_snprintf(sub, sizeof sub, "%s%s%s", tg->artist, tg->artist[0] && tg->album[0] ? " \xC2\xB7 " : "", tg->album);
+                    else SDL_strlcpy(sub, f->parent ? f->parent->name : "", sizeof sub);
+                    ui_text_fit(ui, FONT_REGULAR, TS_SMALL, r.x + dp(ui, 52), r.y + dp(ui, 8) + ui_line_h(ui, TS_BODY), r.w - dp(ui, 68), t->text_dim, sub);
+                }
+                if (st.activated) music_play_folder(a, ROOT_MUSIC, f, 0);
+                y += rh;
+            }
+            y += dp(ui, 14);
+        } else {
+            float gap = dp(ui, 24), target = dp(ui, k == SK_ARTIST ? 168 : 186);
+            int cols = SDL_max(2, (int)((w + gap) / (target + gap)));
+            float cw = (w - gap * (cols - 1)) / cols;
+            float ch = cw + dp(ui, 12) + ui_line_h(ui, TS_BODY) + ui_line_h(ui, TS_SMALL) + dp(ui, 8);
+            int c = 0;
+            for (int i = 0; i < g_nhits[k]; i++) {
+                FsNode *d = (FsNode *)g_idx.e[g_hits[k][i].entry].ref;
+                char meta[64];
+                SDL_snprintf(meta, sizeof meta, "%d track%s", count_audio(d), count_audio(d) == 1 ? "" : "s");
+                if (cover_card(a, (SDL_FRect){ x + c * (cw + gap), y, cw, ch }, d, k == SK_ARTIST, meta)) {
+                    char rel[THC_PATH_MAX];
+                    nav_reset(&a->mnav);
+                    /* an album sits below its artist: open the artist first so Back works */
+                    if (k == SK_ALBUM && d->parent && d->parent->parent) nav_push(a, &a->mnav, ROOT_MUSIC, fs_relpath(d->parent, rel, sizeof rel));
+                    nav_push(a, &a->mnav, ROOT_MUSIC, fs_relpath(d, rel, sizeof rel));
+                    music_search_clear();
+                }
+                if (++c == cols) { c = 0; y += ch + gap; }
+            }
+            if (c) y += ch + gap;
+        }
+    }
+    return y - y0;
+}
+
 void portal_music(App *a, SDL_FRect area)
 {
     Ui *ui = &a->ui;
@@ -350,7 +543,13 @@ void portal_music(App *a, SDL_FRect area)
         char sub[96];
         SDL_snprintf(sub, sizeof sub, "%d artists  \xC2\xB7  %d tracks", albums_here, count_audio(root));
         ui_text(ui, FONT_REGULAR, TS_BODY, x, y, t->text_dim, sub);
-        y += ui_line_h(ui, TS_BODY) + dp(ui, 28);
+        y += ui_line_h(ui, TS_BODY) + dp(ui, 20);
+        search_refresh(a, ui->time);
+        y += search_bar(a, x, y, w) + dp(ui, 22);
+        if (g_query[0]) {
+            y += search_results(a, x, y, w);
+            goto done_music;
+        }
         history_section(a, x, &y, w, "Continue listening", PLAYS_IN_PROGRESS);
         history_section(a, x, &y, w, "Recently played", PLAYS_RECENT);
         history_section(a, x, &y, w, "Most played", PLAYS_MOST);
@@ -452,6 +651,7 @@ void portal_music(App *a, SDL_FRect area)
         }
         y = SDL_max(ty, y + cs);
     }
+done_music:
     y += dp(ui, 140); /* room for the now-playing bar */
     ui_scroll_end(ui, y + off - area.y);
 }
