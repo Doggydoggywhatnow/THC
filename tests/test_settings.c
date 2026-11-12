@@ -159,7 +159,7 @@ int main(void)
         settings_defaults(&a);
         CHECK(!a.nsfw_enabled && a.nsfw_tab == NSFW_TAB_VISIBLE && a.nsfw_hide_stops_playback && !a.nsfw_record_history);
         CHECK(a.nsfw_clear_thumbs_on_exit && !a.nsfw_confirm_before_open && a.nsfw_mask_titles && !a.nsfw_rules_enabled);
-        CHECK(a.nsfw_rules[0] == 0 && a.nsfw_roots == 0 && a.nsfw_pin_hash[0] == 0 && a.nsfw_relock_minutes == 10);
+        CHECK(a.nsfw_rules[0] == 0 && a.nsfw_dir[0] == 0 && !a.nsfw_rules_notice_seen && a.nsfw_roots == 0 && a.nsfw_pin_hash[0] == 0 && a.nsfw_relock_minutes == 10);
         CHECK_STR(k_actions[ACT_NSFW_MARK].def, "N");
         CHECK_STR(k_actions[ACT_NSFW_PANIC].def, "Ctrl+Shift+X");
         CHECK_STR(k_actions[ACT_NSFW_TAB].def, "Ctrl+Shift+H");
@@ -173,6 +173,8 @@ int main(void)
         a.nsfw_rules_enabled = true;
         snprintf(a.nsfw_rules, sizeof a.nsfw_rules, "NSFW|*xxx*");
         a.nsfw_roots = 5;
+        a.nsfw_rules_notice_seen = true;
+        snprintf(a.nsfw_dir, sizeof a.nsfw_dir, "/mnt/media/Private Folder \xc3\xa9");
         snprintf(a.nsfw_pin_salt, sizeof a.nsfw_pin_salt, "00aa");
         snprintf(a.nsfw_pin_hash, sizeof a.nsfw_pin_hash, "ff00");
         a.nsfw_relock_minutes = 30;
@@ -182,7 +184,9 @@ int main(void)
         CHECK(settings_load(&b, "thc_test_nsfw.ini"));
         CHECK(b.nsfw_enabled && b.nsfw_tab == NSFW_TAB_HIDDEN && !b.nsfw_hide_stops_playback && b.nsfw_record_history);
         CHECK(!b.nsfw_clear_thumbs_on_exit && b.nsfw_confirm_before_open && !b.nsfw_mask_titles && b.nsfw_rules_enabled);
-        CHECK_STR(b.nsfw_rules, "NSFW|*xxx*");
+        CHECK_STR(b.nsfw_rules, "NSFW|*xxx*");                   /* removed in 0.3.1 (#34), still kept unchanged */
+        CHECK(b.nsfw_rules_notice_seen);
+        CHECK_STR(b.nsfw_dir, "/mnt/media/Private Folder \xc3\xa9");
         CHECK(b.nsfw_roots == 5 && b.nsfw_relock_minutes == 30);
         CHECK_STR(b.nsfw_pin_salt, "00aa");
         CHECK_STR(b.nsfw_pin_hash, "ff00");
@@ -191,6 +195,23 @@ int main(void)
         b.nsfw_relock_minutes = 9999;                            /* out of range values are clamped on load */
         CHECK(settings_save(&b, "thc_test_nsfw.ini") && settings_load(&b, "thc_test_nsfw.ini") && b.nsfw_relock_minutes == 240);
         remove("thc_test_nsfw.ini");
+    }
+    /* a 0.3.0 file with name rules: the keys survive a load and save unchanged, nsfw_dir is empty (#34) */
+    {
+        static Settings o, p;
+        FILE *f = fopen("thc_test_rules.ini", "wb");
+        CHECK(f != NULL);
+        fputs("setup_done = 1\nnsfw_enabled = 1\nnsfw_rules_enabled = 1\nnsfw_rules = NSFW|*xxx*\n", f);
+        fclose(f);
+        settings_defaults(&o);
+        CHECK(settings_load(&o, "thc_test_rules.ini"));
+        CHECK(o.nsfw_rules_enabled && !o.nsfw_rules_notice_seen && o.nsfw_dir[0] == 0 && o.unknown[0] == 0);
+        CHECK(settings_save(&o, "thc_test_rules.ini"));
+        settings_defaults(&p);
+        CHECK(settings_load(&p, "thc_test_rules.ini"));
+        CHECK(p.nsfw_rules_enabled);
+        CHECK_STR(p.nsfw_rules, "NSFW|*xxx*");
+        remove("thc_test_rules.ini");
     }
     TEST_DONE();
 }

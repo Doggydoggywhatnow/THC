@@ -161,11 +161,15 @@ static void page_library(App *a, Layout *L)
     for (int i = 0; i < SECTION_COUNT; i++)
         folder_row(a, L, 3 + i, k_section_names[i], a->set.section_dir[i], icons[i]);
     if (a->set.nsfw_enabled) {
+        group(a, L, "NSFW folder",
+              "Choose one folder. Everything in it is NSFW: it shows only in the NSFW portal, sorted by subfolder. "
+              "THC reads it and never changes, moves or renames anything in it.");
+        folder_row(a, L, 3 + SECTION_COUNT, "NSFW folder", a->set.nsfw_dir, ICON_BEER);
         group(a, L, "NSFW folders", "A whole library folder can count as NSFW: everything in it moves to the NSFW portal, including files added later.");
-        static const char *const root_names[ROOT_COUNT] = { "Video", "Music", "Audiobooks", "Anime", "Television", "Cartoons", "Movies" };
-        static const char *const root_hint[ROOT_COUNT] = { "Main video folder", "Main music folder", "Main audiobook folder", "Section folder",
+        static const char *const root_names[ROOT_NSFW] = { "Video", "Music", "Audiobooks", "Anime", "Television", "Cartoons", "Movies" };
+        static const char *const root_hint[ROOT_NSFW] = { "Main video folder", "Main music folder", "Main audiobook folder", "Section folder",
                                                            "Section folder", "Section folder", "Section folder" };
-        for (int r = 0; r < ROOT_COUNT; r++) {
+        for (int r = 0; r < ROOT_NSFW; r++) {
             const char *dir = r == ROOT_VIDEO ? a->set.video_dir : r == ROOT_MUSIC ? a->set.music_dir : r == ROOT_BOOKS ? a->set.books_dir
                                                                                                                       : a->set.section_dir[r - ROOT_SECTION0];
             if (!dir[0]) continue;
@@ -1114,6 +1118,26 @@ static void page_privacy(App *a, Layout *L)
         if (a->set.nsfw_enabled && a->set.nsfw_pin_hash[0] && !a->nsfw_unlocked) {
             nsfw_unlock_gate(a, L);
         } else if (a->set.nsfw_enabled) {
+            /* one-time notice: name rules were removed in 0.3.1 (#34); nothing is deleted */
+            if (settings_nsfw_rules_notice_due(&a->set)) {
+                SDL_FRect nr = next_row(a, L, dp(ui, 96));
+                ui_fill(ui, nr, ui->th.surface, dp(ui, 12));
+                ui_stroke(ui, nr, ui->th.accent, dp(ui, 12), dp(ui, 2));
+                ui_text_fit(ui, FONT_BOLD, TS_LABEL, nr.x + dp(ui, 16), nr.y + dp(ui, 10), nr.w - dp(ui, 32), ui->th.text,
+                            "NSFW name rules were removed");
+                ui_text_fit(ui, FONT_REGULAR, TS_SMALL, nr.x + dp(ui, 16), nr.y + dp(ui, 12) + ui_line_h(ui, TS_LABEL), nr.w - dp(ui, 32),
+                            ui->th.text_dim, "Choose an NSFW folder or mark items instead.");
+                float bw = dp(ui, 200), bh = dp(ui, 36), by = nr.y + nr.h - bh - dp(ui, 10);
+                if (ui_button(ui, ui_id("set-nsfw-notice-go"), (SDL_FRect){ nr.x + dp(ui, 16), by, bw, bh }, "Choose an NSFW folder", ICON_NONE, true)) {
+                    a->set.nsfw_rules_notice_seen = true;
+                    app_save_settings(a);
+                    g_cat = CAT_LIBRARY;
+                }
+                if (ui_button(ui, ui_id("set-nsfw-notice-ok"), (SDL_FRect){ nr.x + dp(ui, 16) + bw + dp(ui, 10), by, dp(ui, 120), bh }, "Dismiss", ICON_NONE, false)) {
+                    a->set.nsfw_rules_notice_seen = true;
+                    app_save_settings(a);
+                }
+            }
             bool hidden = a->set.nsfw_tab == NSFW_TAB_HIDDEN, hb = hidden;
             tog(a, L, "set-nsfw-hide", "Hide the NSFW tab", "Marked items stay out of the normal portals; show it again here or with the hotkey", &hidden);
             if (hidden != hb) app_nsfw_set_tab_hidden(a, hidden);
@@ -1122,17 +1146,6 @@ static void page_privacy(App *a, Layout *L)
             tog(a, L, "set-nsfw-thumbs", "Clear NSFW thumbnails and screenshots when THC exits", NULL, &a->set.nsfw_clear_thumbs_on_exit);
             tog(a, L, "set-nsfw-confirm", "Ask before opening the NSFW portal", NULL, &a->set.nsfw_confirm_before_open);
             tog(a, L, "set-nsfw-mask", "Hide NSFW titles from the window title, queue and system media controls", NULL, &a->set.nsfw_mask_titles);
-            bool rb = a->set.nsfw_rules_enabled;
-            tog(a, L, "set-nsfw-rules", "Treat folder names that match a rule as NSFW", "For example NSFW or *xxx* (not case sensitive). Rules never override Not NSFW", &a->set.nsfw_rules_enabled);
-            char before[sizeof a->set.nsfw_rules];
-            SDL_strlcpy(before, a->set.nsfw_rules, sizeof before);
-            ui_textfield(ui, ui_id("set-nsfw-rulelist"), next_row(a, L, dp(ui, 52)), a->set.nsfw_rules, sizeof a->set.nsfw_rules,
-                         "Rules, separated by |   (for example NSFW|*xxx*)");
-            if (rb != a->set.nsfw_rules_enabled || strcmp(before, a->set.nsfw_rules)) {
-                app_save_settings(a);
-                app_nsfw_sync(a);
-                a->nsfw_refresh = true;
-            }
             float rl = (float)a->set.nsfw_relock_minutes;
             if (ui_slider(ui, ui_id("set-nsfw-relock"), next_row(a, L, 0), "Lock again after", &rl, 0, 120, 5, "%.0f min")) {
                 a->set.nsfw_relock_minutes = (int)rl;

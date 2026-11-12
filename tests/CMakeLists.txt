@@ -71,6 +71,10 @@ target_link_libraries(test_tags PRIVATE thc_core)
 add_test(NAME tags COMMAND test_tags WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
 if(THC_BUILD_APP)
+  add_executable(test_scan_nsfw test_scan_nsfw.c ../src/scantree.c)
+  target_link_libraries(test_scan_nsfw PRIVATE thc_core SDL3::SDL3)
+  add_test(NAME scan_nsfw COMMAND test_scan_nsfw WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
   add_executable(test_mpv_resume test_mpv_resume.c ../src/video.c ../src/mpv_dyn.c)
   target_include_directories(test_mpv_resume PRIVATE ../include)
   target_compile_definitions(test_mpv_resume PRIVATE THC_TEST_DATA="${CMAKE_CURRENT_SOURCE_DIR}/data")

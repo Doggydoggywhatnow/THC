@@ -213,8 +213,12 @@ void app_rebuild_library(App *a)
     nroots[nn++] = (LibraryRoot){ a->nlib.root[ROOT_VIDEO], ROOT_VIDEO, -1 };
     for (int i = 0; i < SECTION_COUNT; i++)
         nroots[nn++] = (LibraryRoot){ a->nlib.root[ROOT_SECTION0 + i], ROOT_SECTION0 + i, i };
+    /* the NSFW folder's videos are movies and shows of its own root (#34) */
+    LibraryRoot nroots2[2 + SECTION_COUNT];
+    memcpy(nroots2, nroots, sizeof(LibraryRoot) * (size_t)nn);
+    if (a->nlib.root[ROOT_NSFW]) nroots2[nn++] = (LibraryRoot){ a->nlib.root[ROOT_NSFW], ROOT_NSFW, -1 };
     library_clear(&a->nvlib);
-    library_build(&a->nvlib, nroots, nn, &a->set);
+    library_build(&a->nvlib, nroots2, nn, &a->set);
 }
 
 /* ------------------------------------------------------------------------ */
@@ -250,6 +254,7 @@ static char *folder_setting(App *a, int target)
     case 2: return a->set.books_dir;
     default:
         if (target >= 3 && target < 3 + SECTION_COUNT) return a->set.section_dir[target - 3];
+        if (target == 3 + SECTION_COUNT) return a->set.nsfw_dir;      /* the NSFW folder (#34) */
         return NULL;
     }
 }
@@ -463,6 +468,7 @@ static void go_back(App *a)
     case SCREEN_SHOTS: screenshots_back(); break;
     case SCREEN_NSFW: {
         if (a->nsfw_sub == 3) { screenshots_back_nsfw(); break; }
+        if (a->nsfw_sub == 4) { nsfw_folders_back(a); break; }
         PortalNav *nav = a->nsfw_sub == 0 ? &a->nvnav : a->nsfw_sub == 1 ? &a->nmnav : &a->nbnav;
         app_nsfw_view_enter(a);
         nav_pop(a, nav == &a->nvnav ? &a->vnav : nav == &a->nmnav ? &a->mnav : &a->bnav);

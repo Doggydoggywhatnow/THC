@@ -80,26 +80,88 @@ int main(void)
     nsfw_tag(x, NULL, 0, NSFW_SCOPE_FOLDER, "Shows/Secret/S01", 0, 1);
     CHECK(nsfw_hidden(x, 0, "Shows/Secret/S01/e1.mkv", false, 10, &why) && why == NSFW_WHY_FOLDER);
 
-    /* rules: names and patterns, nesting, never over an explicit "not NSFW" */
+    /* the NSFW folder (#34): its own root, everything in it is NSFW, tags cannot change that */
     NsfwIndex *r = make(true);
-    NsfwConfig rc = { .enabled = true, .rules_enabled = true };
-    snprintf(rc.rules, sizeof rc.rules, "NSFW | *xxx* |adult?");
-    nsfw_index_config(r, &rc);
-    CHECK(nsfw_hidden(r, 0, "Videos/nsfw/a.mkv", false, 1, &why) && why == NSFW_WHY_RULE);   /* case-insensitive */
-    CHECK(nsfw_hidden(r, 0, "Videos/My XXX Collection/a/b/c.mkv", false, 1, NULL));         /* nested, pattern */
-    CHECK(nsfw_hidden(r, 0, "adult1/a.mkv", false, 1, NULL));
-    CHECK(!nsfw_hidden(r, 0, "adultss/a.mkv", false, 1, NULL));                             /* ? is exactly one letter */
-    CHECK(!nsfw_hidden(r, 0, "Videos/Normal/a.mkv", false, 1, NULL));
-    CHECK(nsfw_hidden(r, 0, "Videos/Normal/xxx.mkv", false, 1, NULL));                      /* a file name counts, too */
+    NsfwConfig dc = { .enabled = true, .dir_set = true, .dir_root = 7 };
+    nsfw_index_config(r, &dc);
+    CHECK(nsfw_hidden(r, 7, "Sub/a.mkv", false, 1, &why) && why == NSFW_WHY_DIR);
+    CHECK(nsfw_hidden(r, 7, "loose.mp3", false, 1, NULL) && nsfw_hidden(r, 7, "Sub", true, 0, NULL));
+    CHECK(!nsfw_hidden(r, 0, "Sub/a.mkv", false, 1, NULL));                                  /* other roots are untouched */
+    nsfw_tag(r, NULL, 7, NSFW_SCOPE_FILE, "Sub/a.mkv", 1, 0);
+    CHECK(nsfw_hidden(r, 7, "Sub/a.mkv", false, 1, &why) && why == NSFW_WHY_DIR);            /* "Not NSFW" does not apply */
+    dc.dir_set = false;                                                                      /* removing the folder: normal again */
+    nsfw_index_config(r, &dc);
+    CHECK(!nsfw_hidden(r, 7, "Sub/b.mkv", false, 1, NULL));
+    dc.dir_set = true;
+    dc.enabled = false;                                                                      /* portal off: nothing is hidden */
+    nsfw_index_config(r, &dc);
+    CHECK(!nsfw_hidden(r, 7, "Sub/b.mkv", false, 1, NULL));
+    {   /* no history, plays or backlog for what is in the NSFW folder, unless the user turned that on */
+        NsfwConfig hc = { .enabled = true, .dir_set = true, .dir_root = 7 };
+        nsfw_index_config(r, &hc);
+        CHECK(!nsfw_record_allowed(r, true, false, 7, "Sub/a.mkv", 1));
+        CHECK(nsfw_record_allowed(r, true, true, 7, "Sub/a.mkv", 1));
+        CHECK(nsfw_record_allowed(r, true, false, 0, "Shows/Plain/e1.mkv", 10));
+        nsfw_index_config(r, &dc);
+    }
+    CHECK_STR(nsfw_why_text(NSFW_WHY_ITEM), "Marked");
+    CHECK_STR(nsfw_why_text(NSFW_WHY_DIR), "In your NSFW folder");
+    CHECK_STR(nsfw_why_text(NSFW_WHY_FOLDER), "In a folder you marked");
+    CHECK_STR(nsfw_why_text(NSFW_WHY_LIBRARY), "Library folder marked NSFW");
+    CHECK_STR(nsfw_why_text(NSFW_WHY_NONE), "");
+    NsfwConfig on2 = { .enabled = true };
+    nsfw_index_config(r, &on2);
     nsfw_tag(r, NULL, 0, NSFW_SCOPE_FILE, "Videos/nsfw/ok.mkv", 9, 0);
     CHECK(!nsfw_hidden(r, 0, "Videos/nsfw/ok.mkv", false, 9, &why) && why == NSFW_WHY_EXPLICIT_NOT);
     nsfw_tag(r, NULL, 0, NSFW_SCOPE_FOLDER, "Videos/xxx-clean", 0, 0);
-    CHECK(!nsfw_hidden(r, 0, "Videos/xxx-clean/a.mkv", false, 1, NULL));                    /* a "not" folder beats the rule */
-    rc.rules_enabled = false;
-    nsfw_index_config(r, &rc);
-    CHECK(!nsfw_hidden(r, 0, "Videos/nsfw/a.mkv", false, 1, NULL));                         /* rules are off by default */
-    CHECK(nsfw_pattern_match("*", "anything") && nsfw_pattern_match("a*c", "abbbc") && !nsfw_pattern_match("a*c", "abbbd"));
-    CHECK(!nsfw_rules_match("", "a/b") && !nsfw_rules_match("x", NULL));
+    CHECK(!nsfw_hidden(r, 0, "Videos/xxx-clean/a.mkv", false, 1, NULL));
+
+    /* groups: direct subfolders, loose files in "Unsorted", nesting, empty folders hidden, unicode */
+    {
+        FsNode *t = fs_new("/nsfw", true);
+        fs_add_path(t, "Alpha/a1.mkv", 1, 1);
+        fs_add_path(t, "Alpha/Deep/er/a2.mp3", 1, 1);
+        fs_add_path(t, "B\xc3\xa9ta Collection/b.m4b", 1, 1);
+        fs_add_path(t, "Empty/readme.txt", 1, 1);                 /* no media: counts nothing */
+        fs_add_path(t, "loose1.mkv", 1, 1);
+        fs_add_path(t, "loose2.flac", 1, 1);
+        char longn[300];
+        memset(longn, 'x', sizeof longn - 1);
+        longn[sizeof longn - 1] = 0;
+        char lp[400];
+        snprintf(lp, sizeof lp, "%s/c.mkv", longn);
+        fs_add_path(t, lp, 1, 1);
+        NsfwGroup g[16];
+        int n = nsfw_groups(t, g, 16);
+        CHECK(n == 4);                                            /* Alpha, B\xc3\xa9ta, the long one, Unsorted */
+        int alpha = -1, beta = -1, unsorted = -1, lng = -1;
+        for (int i = 0; i < n; i++) {
+            if (!strcmp(g[i].name, "Alpha")) alpha = i;
+            else if (!strcmp(g[i].name, "B\xc3\xa9ta Collection")) beta = i;
+            else if (!strcmp(g[i].name, "Unsorted")) unsorted = i;
+            else if (strlen(g[i].name) == sizeof longn - 1) lng = i;
+        }
+        CHECK(alpha >= 0 && beta >= 0 && unsorted >= 0 && lng >= 0);
+        CHECK(g[alpha].items == 2 && g[alpha].dir != NULL);       /* nested files count */
+        CHECK(g[beta].items == 1 && g[lng].items == 1);
+        CHECK(g[unsorted].items == 2 && g[unsorted].dir == NULL);
+        NsfwGroup g2[8];
+        CHECK(nsfw_groups(g[alpha].dir, g2, 8) == 2);             /* Deep (nested group) and the loose a1.mkv -> Unsorted */
+        CHECK(nsfw_item_count(t) == 6);
+        CHECK(nsfw_groups(NULL, g, 16) == 0);
+        FsNode *e = fs_new("/e", true);
+        CHECK(nsfw_groups(e, g, 16) == 0);
+        fs_free(e);
+        fs_free(t);
+    }
+    /* path helpers for the exclusion of a NSFW folder that sits inside a library folder */
+    CHECK(nsfw_path_inside("/media/video", "/media/video/private"));
+    CHECK(nsfw_path_inside("/media/video/", "/media/video/private/deep"));
+    CHECK(!nsfw_path_inside("/media/video", "/media/video"));
+    CHECK(!nsfw_path_inside("/media/video", "/media/videos/private"));          /* a prefix is not a parent */
+    CHECK(!nsfw_path_inside("/media/video/private", "/media/video"));
+    CHECK(nsfw_path_same("/media/video/", "/media/video") && !nsfw_path_same("/a", "/b") && !nsfw_path_same("", ""));
+    CHECK(nsfw_path_inside("C:\\Media", "C:\\Media\\Private") && nsfw_path_same("C:\\Media\\", "C:/Media"));
 
     /* a whole library folder */
     NsfwConfig mc = { .enabled = true, .root_mask = 1u << 2 };

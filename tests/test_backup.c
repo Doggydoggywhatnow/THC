@@ -48,7 +48,7 @@ int main(void)
     rmrf("bk_data"); rmrf("bk_dest"); rmrf("bk_media");
     MK("bk_data"); MK("bk_data/mpv"); MK("bk_data/mpv/scripts"); MK("bk_data/mpv/script-opts"); MK("bk_data/mpv/watch_later");
     MK("bk_data/thumbs"); MK("bk_data/screenshots"); MK("bk_data/screenshots/nsfw"); MK("bk_dest"); MK("bk_media");
-    put("bk_data/settings.ini", "volume = 40\nfuture_key = 1\n");
+    put("bk_data/settings.ini", "volume = 40\nfuture_key = 1\nnsfw_dir = /mnt/Private Stash\nnsfw_rules = NSFW|*xxx*\n");
     put("bk_data/mpv/mpv.conf", "volume=50\n");
     put("bk_data/mpv/input.conf", "F9 show-text hi\n");
     put("bk_data/mpv/scripts/a.lua", "-- a\n");
@@ -70,6 +70,13 @@ int main(void)
     char p[1200];
     snprintf(p, sizeof p, "%s/settings.ini", out);
     CHECK(exists(p));
+    {   /* the NSFW folder setting (#34) travels with the settings, and so do the old rule keys */
+        char sp[1200], buf[512] = { 0 };
+        snprintf(sp, sizeof sp, "%s/settings.ini", out);
+        FILE *sf = fopen(sp, "rb");
+        if (sf) { size_t n = fread(buf, 1, sizeof buf - 1, sf); buf[n] = 0; fclose(sf); }
+        CHECK(strstr(buf, "nsfw_dir = /mnt/Private Stash") && strstr(buf, "nsfw_rules = NSFW|*xxx*"));
+    }
     snprintf(p, sizeof p, "%s/mpv/mpv.conf", out);
     CHECK(exists(p));
     snprintf(p, sizeof p, "%s/mpv/scripts/a.lua", out);

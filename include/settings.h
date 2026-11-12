@@ -154,8 +154,10 @@ typedef struct Settings {
     bool nsfw_clear_thumbs_on_exit;
     bool nsfw_confirm_before_open;
     bool nsfw_mask_titles;                   /* window title, OSD, queue, now playing */
-    bool nsfw_rules_enabled;
-    char nsfw_rules[256];                    /* names or patterns separated by "|" */
+    bool nsfw_rules_enabled;                 /* removed in 0.3.1 (#34): still read and written back unchanged, never used */
+    char nsfw_rules[256];                    /* same: kept for older and newer versions */
+    bool nsfw_rules_notice_seen;             /* the one-time "name rules were removed" notice was dismissed */
+    char nsfw_dir[THC_PATH_MAX];             /* the NSFW folder (#34): empty = none. Everything in it is NSFW */
     int nsfw_roots;                          /* bit i: library root i is treated as NSFW */
     char nsfw_pin_salt[64], nsfw_pin_hash[96];  /* never shown */
     int nsfw_relock_minutes;                 /* 0 = never */
@@ -176,6 +178,8 @@ typedef struct Settings {
 
 void settings_defaults(Settings *s);
 /* Returns false if the file does not exist (defaults are kept). */
+/* NSFW name rules were removed in 0.3.1 (#34). Old rules that were switched on get a one-time notice. */
+bool settings_nsfw_rules_notice_due(const Settings *s);
 bool settings_load(Settings *s, const char *path);
 bool settings_save(const Settings *s, const char *path);
 

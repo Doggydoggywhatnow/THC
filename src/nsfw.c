@@ -187,63 +187,80 @@ int nsfw_tag_count_state(const NsfwIndex *x, int state)
     return c;
 }
 
-/* ---- patterns ---------------------------------------------------------- */
+/* ---- the NSFW folder: grouping and paths ------------------------------- */
 
-bool nsfw_pattern_match(const char *p, const char *s)
+int nsfw_item_count(const FsNode *n)
 {
-    while (*p) {
-        if (*p == '*') {
-            while (*p == '*') p++;
-            if (!*p) return true;
-            for (; *s; s++)
-                if (nsfw_pattern_match(p, s)) return true;
-            return false;
-        }
-        if (!*s) return false;
-        if (*p != '?' && tolower((unsigned char)*p) != tolower((unsigned char)*s)) return false;
-        p++;
-        s++;
-    }
-    return !*s;
+    if (!n) return 0;
+    if (!n->dir) return n->kind == MK_VIDEO || n->kind == MK_AUDIO || n->kind == MK_AUDIO_MPV || n->kind == MK_BOOK;
+    int c = 0;
+    for (int i = 0; i < n->nkids; i++) c += nsfw_item_count(n->kids[i]);
+    return c;
 }
 
-static bool any_rule_matches(const char *rules, const char *name)
+int nsfw_groups(const FsNode *dir, NsfwGroup *out, int max)
 {
-    char pat[128];
-    const char *p = rules;
-    while (*p) {
-        const char *bar = strchr(p, '|');
-        size_t len = bar ? (size_t)(bar - p) : strlen(p);
-        while (len && isspace((unsigned char)*p)) { p++; len--; }
-        while (len && isspace((unsigned char)p[len - 1])) len--;
-        if (len && len < sizeof pat) {
-            memcpy(pat, p, len);
-            pat[len] = 0;
-            if (nsfw_pattern_match(pat, name)) return true;
+    if (!dir || !dir->dir || !out) return 0;
+    int n = 0, loose = 0;
+    for (int i = 0; i < dir->nkids; i++) {
+        const FsNode *k = dir->kids[i];
+        if (k->dir) {
+            int c = nsfw_item_count(k);
+            if (c > 0 && n < max) out[n++] = (NsfwGroup){ k, k->name, c };
+        } else if (nsfw_item_count(k)) {
+            loose++;
         }
-        if (!bar) break;
-        p = bar + 1;
     }
-    return false;
+    if (loose > 0 && n < max) out[n++] = (NsfwGroup){ NULL, "Unsorted", loose };
+    return n;
 }
 
-bool nsfw_rules_match(const char *rules, const char *rel)
+static size_t trim_len(const char *p)
 {
-    if (!rules || !*rules || !rel) return false;
-    char part[256];
-    const char *p = rel;
-    while (*p) {
-        const char *slash = strchr(p, '/');
-        size_t len = slash ? (size_t)(slash - p) : strlen(p);
-        if (len && len < sizeof part) {
-            memcpy(part, p, len);
-            part[len] = 0;
-            if (any_rule_matches(rules, part)) return true;
-        }
-        if (!slash) break;
-        p = slash + 1;
+    size_t n = strlen(p);
+    while (n > 1 && (p[n - 1] == '/' || p[n - 1] == '\\')) n--;
+    return n;
+}
+
+static bool same_char(char a, char b)
+{
+    if ((a == '/' || a == '\\') && (b == '/' || b == '\\')) return true;
+#ifdef _WIN32
+    return tolower((unsigned char)a) == tolower((unsigned char)b);
+#else
+    return a == b;
+#endif
+}
+
+bool nsfw_path_inside(const char *dir, const char *path)
+{
+    if (!dir || !path || !*dir || !*path) return false;
+    size_t dl = trim_len(dir), pl = trim_len(path);
+    if (pl <= dl) return false;
+    for (size_t i = 0; i < dl; i++)
+        if (!same_char(dir[i], path[i])) return false;
+    return path[dl] == '/' || path[dl] == '\\' || dl == 1;
+}
+
+bool nsfw_path_same(const char *a, const char *b)
+{
+    if (!a || !b || !*a || !*b) return false;
+    size_t al = trim_len(a), bl = trim_len(b);
+    if (al != bl) return false;
+    for (size_t i = 0; i < al; i++)
+        if (!same_char(a[i], b[i])) return false;
+    return true;
+}
+
+const char *nsfw_why_text(int why)
+{
+    switch (why) {
+    case NSFW_WHY_ITEM: return "Marked";
+    case NSFW_WHY_FOLDER: return "In a folder you marked";
+    case NSFW_WHY_LIBRARY: return "Library folder marked NSFW";
+    case NSFW_WHY_DIR: return "In your NSFW folder";
+    default: return "";
     }
-    return false;
 }
 
 /* ---- the decision ------------------------------------------------------ */
@@ -261,6 +278,11 @@ bool nsfw_hidden(const NsfwIndex *x, int root, const char *rel, bool is_dir, int
     if (!x || !x->cfg.enabled || !rel) return false;
     bool result = false;
     int i;
+    /* everything in the chosen NSFW folder is NSFW: no tag changes that */
+    if (x->cfg.dir_set && root == x->cfg.dir_root) {
+        if (why) *why = NSFW_WHY_DIR;
+        return true;
+    }
     if (!is_dir) {
         i = find_entry(x, root, NSFW_SCOPE_FILE, rel, size);
         if (i < 0) i = moved_candidate(x, root, rel, size);
@@ -279,13 +301,9 @@ bool nsfw_hidden(const NsfwIndex *x, int root, const char *rel, bool is_dir, int
         i = find_entry(x, root, NSFW_SCOPE_FOLDER, buf, 0);
         if (i >= 0 && decide(x->e[i].state, NSFW_WHY_FOLDER, why, &result)) return result;
     }
-    /* nothing was tagged: a library folder marked NSFW, then the rules */
+    /* nothing was tagged: a library folder marked NSFW */
     if (root >= 0 && root < 32 && (x->cfg.root_mask >> root) & 1u) {
         if (why) *why = NSFW_WHY_LIBRARY;
-        return true;
-    }
-    if (x->cfg.rules_enabled && nsfw_rules_match(x->cfg.rules, rel)) {
-        if (why) *why = NSFW_WHY_RULE;
         return true;
     }
     return false;

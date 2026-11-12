@@ -97,7 +97,7 @@ static const SettingDef k_defs[] = {
     B("nsfw_enabled", nsfw_enabled, 0), E("nsfw_tab", nsfw_tab, 0, n_nsfwtab), B("nsfw_hide_stops_playback", nsfw_hide_stops_playback, 1),
     B("nsfw_record_history", nsfw_record_history, 0), B("nsfw_clear_thumbs_on_exit", nsfw_clear_thumbs_on_exit, 1),
     B("nsfw_confirm_before_open", nsfw_confirm_before_open, 0), B("nsfw_mask_titles", nsfw_mask_titles, 1),
-    B("nsfw_rules_enabled", nsfw_rules_enabled, 0), I("nsfw_roots", nsfw_roots, 0, 0, 1023),
+    B("nsfw_rules_enabled", nsfw_rules_enabled, 0), B("nsfw_rules_notice_seen", nsfw_rules_notice_seen, 0), I("nsfw_roots", nsfw_roots, 0, 0, 1023),
     I("nsfw_relock_minutes", nsfw_relock_minutes, 10, 0, 240),
 };
 #undef B
@@ -184,7 +184,7 @@ static bool key_known(const char *k)
         "setup_done", "music_dir", "video_dir", "books_dir", "sort_mode", "watched_threshold", "volume", "book_speed",
         "skip_seconds", "libmpv_path", "theme", "accent", "text_scale", "ui_scale", "font_path", "high_contrast",
         "reduced_motion", "screen_reader", "remember_history", "video_thumbs", "last_portal", "screenshot_dir",
-        "screenshot_template", "nsfw_rules", "nsfw_pin_salt", "nsfw_pin_hash", NULL
+        "screenshot_template", "nsfw_rules", "nsfw_dir", "nsfw_pin_salt", "nsfw_pin_hash", NULL
     };
     for (int i = 0; fixed[i]; i++)
         if (!strcmp(k, fixed[i])) return true;
@@ -250,6 +250,7 @@ bool settings_load(Settings *s, const char *path)
         else if (!strcmp(k, "screenshot_dir")) STR(screenshot_dir);
         else if (!strcmp(k, "screenshot_template")) STR(screenshot_template);
         else if (!strcmp(k, "nsfw_rules")) STR(nsfw_rules);
+        else if (!strcmp(k, "nsfw_dir")) STR(nsfw_dir);
         else if (!strcmp(k, "nsfw_pin_salt")) STR(nsfw_pin_salt);
         else if (!strcmp(k, "nsfw_pin_hash")) STR(nsfw_pin_hash);
         else if (parse_def(s, k, v, &seen_history_key)) { /* a table-driven setting */ }
@@ -318,6 +319,7 @@ bool settings_save(const Settings *s, const char *path)
     fprintf(f, "screenshot_dir = %s\n", s->screenshot_dir);
     fprintf(f, "screenshot_template = %s\n", s->screenshot_template);
     fprintf(f, "nsfw_rules = %s\n", s->nsfw_rules);
+    fprintf(f, "nsfw_dir = %s\n", s->nsfw_dir);
     fprintf(f, "nsfw_pin_salt = %s\n", s->nsfw_pin_salt);
     fprintf(f, "nsfw_pin_hash = %s\n", s->nsfw_pin_hash);
     fprintf(f, "\n[hotkeys]\n");
@@ -357,4 +359,9 @@ void settings_set_override(Settings *s, const char *key, int section)
     snprintf(s->overrides[s->noverrides].path, sizeof s->overrides[0].path, "%s", key);
     s->overrides[s->noverrides].section = section;
     s->noverrides++;
+}
+
+bool settings_nsfw_rules_notice_due(const Settings *s)
+{
+    return s->nsfw_rules_enabled && !s->nsfw_rules_notice_seen;
 }

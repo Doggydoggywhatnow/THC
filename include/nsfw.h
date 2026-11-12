@@ -7,8 +7,9 @@
  * Resolution, nearest first:
  *   1. a tag on the item itself (a file by path and size, or a folder by path),
  *   2. a tag on a parent folder, nearest parent first (an explicit "not NSFW" beats everything above it),
- *   3. if nothing was tagged: the library folder is marked NSFW, or a rule matches a folder or file name.
- * Rules never override an explicit "not NSFW". With the portal switched off nothing is NSFW. */
+ *   3. if nothing was tagged: the library folder is marked NSFW.
+ * Everything in the chosen NSFW folder (its own library root) is NSFW, whatever the tags say (#34).
+ * With the portal switched off nothing is NSFW. */
 #ifndef THC_NSFW_H
 #define THC_NSFW_H
 
@@ -19,12 +20,12 @@
 #include <stdint.h>
 
 enum { NSFW_SCOPE_FILE = 0, NSFW_SCOPE_FOLDER = 1 };
-enum { NSFW_WHY_NONE = 0, NSFW_WHY_ITEM, NSFW_WHY_FOLDER, NSFW_WHY_LIBRARY, NSFW_WHY_RULE, NSFW_WHY_EXPLICIT_NOT };
+enum { NSFW_WHY_NONE = 0, NSFW_WHY_ITEM, NSFW_WHY_FOLDER, NSFW_WHY_LIBRARY, NSFW_WHY_DIR, NSFW_WHY_EXPLICIT_NOT };
 
 typedef struct NsfwConfig {
     bool enabled;            /* the portal is on; off means nothing is hidden */
-    bool rules_enabled;
-    char rules[256];         /* names or patterns separated by "|" (case-insensitive, * and ? work) */
+    bool dir_set;            /* a NSFW folder is chosen (#34) */
+    int dir_root;            /* the library root that holds it: everything in it is NSFW */
     unsigned root_mask;      /* bit i: library root i is treated as NSFW */
 } NsfwConfig;
 
@@ -55,10 +56,22 @@ bool nsfw_record_allowed(const NsfwIndex *x, bool history_on_for_kind, bool reco
 /* The name a thumbnail is cached under: "<hex>" normally, "nsfw/<hex>" for NSFW items (a folder of its own). */
 void nsfw_thumb_name(const char *hexkey, bool nsfw, char *out, size_t cap);
 
-/* Does a name match a rule pattern ("*xxx*", "NSFW")? Case-insensitive. */
-bool nsfw_pattern_match(const char *pattern, const char *name);
-/* Does any rule in a "|"-separated list match any folder or file name along `rel`? */
-bool nsfw_rules_match(const char *rules, const char *rel);
+/* ---- the NSFW folder (#34) ---- */
+typedef struct NsfwGroup {
+    const FsNode *dir;       /* the subfolder, or NULL for the "Unsorted" group (files directly in the folder) */
+    const char *name;
+    int items;               /* video, music and audiobook files inside, nested ones included */
+} NsfwGroup;
+/* Media files (video, audio, audiobook) under a node. */
+int nsfw_item_count(const FsNode *n);
+/* The groups of a folder: each direct subfolder that holds items, then "Unsorted" if files sit directly in it.
+ * Empty folders are left out. Returns the number written (at most `max`). */
+int nsfw_groups(const FsNode *dir, NsfwGroup *out, int max);
+/* Is `path` strictly inside `dir`? Is it the same folder? (separator and, on Windows, case insensitive) */
+bool nsfw_path_inside(const char *dir, const char *path);
+bool nsfw_path_same(const char *a, const char *b);
+/* The text the NSFW portal shows for a reason (#28); "" for none. */
+const char *nsfw_why_text(int why);
 
 /* Import and export the tag list as plain text: "<root-name>\t<f|d>\t<state>\t<size>\t<relative path>" per line.
  * Callers must have the lock open before they offer these. Returns the number of lines. */

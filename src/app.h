@@ -25,7 +25,8 @@ typedef enum Screen {
 } Screen;
 
 /* Library roots, as scanned from disk. */
-enum { ROOT_VIDEO = 0, ROOT_MUSIC, ROOT_BOOKS, ROOT_SECTION0, ROOT_COUNT = ROOT_SECTION0 + SECTION_COUNT };
+/* ROOT_NSFW (#34) is the chosen NSFW folder. It is last, so the bits of `nsfw_roots` keep their meaning. */
+enum { ROOT_VIDEO = 0, ROOT_MUSIC, ROOT_BOOKS, ROOT_SECTION0, ROOT_NSFW = ROOT_SECTION0 + SECTION_COUNT, ROOT_COUNT };
 
 typedef struct Library {
     FsNode *root[ROOT_COUNT];      /* NULL if the folder is not set */
@@ -77,7 +78,9 @@ typedef struct App {
     bool nsfw_view;                /* lib, vlib, the navigation stacks and lib_version are swapped with the NSFW ones */
     double last_input;             /* when the user last did anything (for the NSFW auto-relock) */
     bool nsfw_unlocked;            /* the NSFW portal is open (no PIN, or the PIN was entered) */
-    int nsfw_sub;                  /* 0 video, 1 music, 2 audiobooks */
+    int nsfw_sub;                  /* 0 video, 1 music, 2 audiobooks, 3 screenshots, 4 folders (#34) */
+    char nfold_rel[THC_PATH_MAX];  /* the Folders view: the open group, relative to the NSFW folder ("" = the top) */
+    bool nfold_unsorted;           /* ...showing the loose files of that folder instead of its groups */
     Uint64 nlib_version;
     bool nsfw_refresh;             /* a tag changed: refilter before the next frame */
     struct { bool active; int root, scope, prev; char rel[THC_PATH_MAX]; int64_t size; double until; } undo;
@@ -122,6 +125,7 @@ void app_toast(App *a, const char *fmt, ...);
 void app_export_history(App *a, bool json);
 enum { CONFIRM_CLEAR_HISTORY = 1, CONFIRM_CLEAR_QUEUE, CONFIRM_RESTORE, CONFIRM_DELETE_SHOT, CONFIRM_OPEN_NSFW };
 bool screenshots_back(void);
+bool nsfw_folders_back(App *a);          /* one level up in the Folders view; false at the top */
 bool screenshots_back_nsfw(void);
 void screenshots_confirmed_delete(App *a);
 enum { DLG_BACKUP = 100, DLG_RESTORE, DLG_NSFW_EXPORT, DLG_NSFW_IMPORT };   /* folder dialogs that are not a library folder */

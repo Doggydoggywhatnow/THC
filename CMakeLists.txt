@@ -174,6 +174,7 @@ if(THC_BUILD_APP)
     src/portal_screenshots.c
     src/portal_video.c
     src/scan.c
+    src/scantree.c
     src/tagcache.c
     src/thumbgen.c
     src/thumbs.c

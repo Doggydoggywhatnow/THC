@@ -77,6 +77,7 @@ int main(void)
     CHECK(!strstr(out, "Shows/A/a.mkv"));                  /* titles stay hidden by default */
     CHECK(strstr(out, "NSFW marks: 2 marked"));            /* the number of marks is reported... */
     CHECK(strstr(out, "thumbs/nsfw/: empty"));
+    CHECK(strstr(out, "NSFW folder: not set"));
     write_file("insp_fx/screenshots/nsfw/secret-name.png", "png");
     write_file("insp_fx/thumbs/nsfw/abc.jpg", "jpg");
     CHECK(run("%s --data insp_fx --exe %s --show-titles", INSPECT_BIN, INSPECT_CLEAN) == 0 && strstr(out, "Shows/A/a.mkv"));
@@ -84,6 +85,12 @@ int main(void)
     CHECK(!strstr(out, "Secret") && !strstr(out, "Other/File") && strstr(out, "2 NSFW entries left out"));
     CHECK(run("%s --data insp_fx --exe %s -v", INSPECT_BIN, INSPECT_CLEAN) == 0);
     CHECK(!strstr(out, "secret-name") && strstr(out, "thumbs/nsfw/: 1 files"));   /* NSFW screenshots are counted, not listed */
+
+    /* an NSFW folder (#34): reported as set; its path, its file names and the titles stay out of the report */
+    write_file("insp_fx/settings.ini", "mpv_block_network=true\nnsfw_dir=/private/Secret Stash\n");
+    CHECK(run("%s --data insp_fx --exe %s --show-titles", INSPECT_BIN, INSPECT_CLEAN) == 0);
+    CHECK(strstr(out, "NSFW folder: set") && !strstr(out, "Secret Stash") && !strstr(out, "Shows/A/a.mkv"));
+    write_file("insp_fx/settings.ini", "mpv_block_network=true\n");
 
     /* JSON */
     rc = run("%s --data insp_fx --exe %s --json", INSPECT_BIN, INSPECT_CLEAN);

@@ -294,58 +294,8 @@ static void report_files(const char *data)
 
 /* ---- NSFW (#13): the tool counts the marks and never prints the name of a marked item ---- */
 
-static int g_nsfw_rules_on;
-static char g_nsfw_rules[300];
+static int g_nsfw_dir_set;      /* an NSFW folder is chosen (#34): reported as set or not, never its path or contents */
 static int g_nsfw_roots;
-
-static int glob_match(const char *p, const char *s)
-{
-    while (*p) {
-        if (*p == '*') {
-            while (*p == '*') p++;
-            if (!*p) return 1;
-            for (; *s; s++) if (glob_match(p, s)) return 1;
-            return 0;
-        }
-        if (!*s) return 0;
-        if (*p != '?' && tolower((unsigned char)*p) != tolower((unsigned char)*s)) return 0;
-        p++; s++;
-    }
-    return !*s;
-}
-
-static int rules_hit(const char *rel)
-{
-    if (!g_nsfw_rules_on || !g_nsfw_rules[0]) return 0;
-    char part[256];
-    const char *p = rel;
-    while (*p) {
-        const char *sl = strchr(p, '/');
-        size_t n = sl ? (size_t)(sl - p) : strlen(p);
-        if (n && n < sizeof part) {
-            memcpy(part, p, n);
-            part[n] = 0;
-            const char *r = g_nsfw_rules;
-            while (*r) {
-                const char *bar = strchr(r, '|');
-                size_t rl = bar ? (size_t)(bar - r) : strlen(r);
-                char pat[128];
-                while (rl && isspace((unsigned char)*r)) { r++; rl--; }
-                while (rl && isspace((unsigned char)r[rl - 1])) rl--;
-                if (rl && rl < sizeof pat) {
-                    memcpy(pat, r, rl);
-                    pat[rl] = 0;
-                    if (glob_match(pat, part)) return 1;
-                }
-                if (!bar) break;
-                r = bar + 1;
-            }
-        }
-        if (!sl) break;
-        p = sl + 1;
-    }
-    return 0;
-}
 
 static int tag_state(sqlite3 *db, const char *sql, const char *rel, long long size, int use_size)
 {
@@ -359,7 +309,7 @@ static int tag_state(sqlite3 *db, const char *sql, const char *rel, long long si
     return state;
 }
 
-/* Would THC treat this history row as NSFW? Conservative: any root, any rule. */
+/* Would THC treat this history row as NSFW? Conservative: any root. */
 static int row_is_nsfw(sqlite3 *db, const char *rel, long long size)
 {
     int st = tag_state(db, "SELECT state FROM nsfw_tags WHERE scope=0 AND rel_path=?1 AND size=?2 LIMIT 1", rel, size, 1);
@@ -371,7 +321,7 @@ static int row_is_nsfw(sqlite3 *db, const char *rel, long long size)
         st = tag_state(db, "SELECT state FROM nsfw_tags WHERE scope=1 AND rel_path=?1 LIMIT 1", buf, 0, 0);
         if (st >= 0) return st == 1;
     }
-    return rules_hit(rel);
+    return 0;
 }
 
 static int setting_value(const char *data, const char *key, char *out, size_t cap);
@@ -435,13 +385,16 @@ static void report_history(const char *data)
             kv("thumbs/nsfw/", "empty");
         }
     }
+    {
+        char dirv[1200];
+        g_nsfw_dir_set = setting_value(data, "nsfw_dir", dirv, sizeof dirv) && dirv[0];
+        kv("NSFW folder", g_nsfw_dir_set ? "set (its path and contents are not listed)" : "not set");
+    }
     if (R.titles) {
         char v[16];
-        if (setting_value(data, "nsfw_rules_enabled", v, sizeof v)) g_nsfw_rules_on = strcmp(v, "0") && strcmp(v, "false");
-        setting_value(data, "nsfw_rules", g_nsfw_rules, sizeof g_nsfw_rules);
         if (setting_value(data, "nsfw_roots", v, sizeof v)) g_nsfw_roots = atoi(v);
-        if (g_nsfw_roots) {
-            note("Titles are not listed: whole library folders are marked NSFW, and history does not say which folder a row came from.");
+        if (g_nsfw_roots || g_nsfw_dir_set) {
+            note("Titles are not listed: whole folders are NSFW, and history does not say which folder a row came from.");
         } else if (sqlite3_prepare_v2(db, "SELECT path, size, position, watched FROM history ORDER BY updated DESC LIMIT 50", -1, &q, NULL) ==
                    SQLITE_OK) {
             int hidden = 0;

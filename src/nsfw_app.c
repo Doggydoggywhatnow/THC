@@ -46,8 +46,8 @@ void app_nsfw_sync(App *a)
     NsfwConfig c;
     memset(&c, 0, sizeof c);
     c.enabled = a->set.nsfw_enabled;
-    c.rules_enabled = a->set.nsfw_rules_enabled;
-    SDL_strlcpy(c.rules, a->set.nsfw_rules, sizeof c.rules);
+    c.dir_set = a->set.nsfw_dir[0] != 0;
+    c.dir_root = ROOT_NSFW;
     c.root_mask = (unsigned)a->set.nsfw_roots;
     nsfw_index_config(a->nsfw, &c);
 }
@@ -71,6 +71,7 @@ void app_nsfw_apply(App *a)
     app_nsfw_sync(a);
     if (!a->set.nsfw_enabled || !a->nsfw) {
         a->lib = a->full;                      /* the same trees: nothing is hidden, nothing is copied */
+        a->lib.root[ROOT_NSFW] = NULL;         /* except the NSFW folder: with the portal off it is not shown anywhere */
         return;
     }
     for (int r = 0; r < ROOT_COUNT; r++) {
