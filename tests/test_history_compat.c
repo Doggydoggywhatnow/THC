@@ -128,6 +128,12 @@ int main(void)
     CHECK(history_save(h, "x.mkv", 1, 5, 10, 0.9, false));
     history_close(h);
 
+    /* a play counts at the threshold (default 65%), not below it; the threshold is configurable */
+    CHECK(!history_play_counts(64, 100, 65) && history_play_counts(65, 100, 65) && history_play_counts(100, 100, 65));
+    CHECK(history_play_counts(50, 100, 50) && !history_play_counts(79, 100, 80) && history_play_counts(80, 100, 80));
+    CHECK(!history_play_counts(10, 0, 65) && !history_play_counts(-1, 100, 65));   /* unknown length or bad input */
+    CHECK(history_play_counts(51, 100, 10));                                        /* the threshold is clamped to 50..100 */
+
     /* 7. version 2 features: kinds, plays, clearing one portal, backlog, export, old data kept */
     clean();
     sql(k_v1);

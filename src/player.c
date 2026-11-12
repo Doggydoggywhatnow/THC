@@ -736,7 +736,7 @@ void music_pump(App *a)
     QueueItem *it = cur_item();
     if (it && it->kind == QK_SONG && P.ab != BK_NONE && !P.paused && !P.play_counted) {
         double d = dur_now(a);
-        if (d > 0 && P.listened >= d * a->set.play_threshold_music / 100.0) count_play(a, it, P.listened);
+        if (history_play_counts(P.listened, d, a->set.play_threshold_music)) count_play(a, it, P.listened);
     }
     if (P.ab != BK_NONE && !P.paused) {
         Uint64 tick = SDL_GetTicks();

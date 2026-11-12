@@ -628,3 +628,11 @@ int history_backlog_load(History *h, int queue, BacklogRow *rows, int max)
     sqlite3_finalize(st);
     return n;
 }
+
+bool history_play_counts(double listened, double duration, int percent)
+{
+    if (duration <= 0 || listened < 0) return false;
+    if (percent < 50) percent = 50;
+    if (percent > 100) percent = 100;
+    return listened >= duration * percent / 100.0;
+}

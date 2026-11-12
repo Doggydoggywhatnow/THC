@@ -96,6 +96,9 @@ typedef struct BacklogRow {
 bool history_backlog_save(History *h, int queue, const BacklogRow *rows, int n);
 int history_backlog_load(History *h, int queue, BacklogRow *rows, int max);
 
+/* Has a track been listened to long enough to count as a play? (percent 50..100 of its length) */
+bool history_play_counts(double listened_seconds, double duration, int percent);
+
 /* Delete everything. */
 bool history_clear(History *h);
 

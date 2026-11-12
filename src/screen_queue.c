@@ -99,7 +99,7 @@ static int show_items(App *a, const char *key, int season, bool unwatched_only, 
 
 enum {
     CA_PLAY_NOW = 1, CA_PLAY_NEXT, CA_ADD_END, CA_ADD_OTHER, CA_PLAY_FROM_HERE, CA_ADD_UNWATCHED, CA_REMOVE,
-    CA_MOVE_OTHER, CA_GOTO, CA_MARK_PLAYED, CA_MARK_UNPLAYED, CA_MODE_WINDOW, CA_MODE_LISTEN, CA_MODE_SKIP
+    CA_MOVE_OTHER, CA_GOTO, CA_MARK_PLAYED, CA_MARK_UNPLAYED, CA_MODE_WINDOW, CA_MODE_LISTEN, CA_MODE_SKIP, CA_FORGET
 };
 enum { CT_ITEM = 1, CT_DIR, CT_SHOW, CT_QROW };
 
@@ -153,6 +153,7 @@ void queue_menu_item(App *a, float x, float y, int root, const FsNode *f)
     menu_row(CA_GOTO, M.item.kind == QK_VIDEO ? "Go to the show" : "Go to the album");
     menu_row(CA_MARK_PLAYED, M.item.kind == QK_VIDEO ? "Mark as watched" : "Mark as played");
     menu_row(CA_MARK_UNPLAYED, M.item.kind == QK_VIDEO ? "Mark as not watched" : "Mark as not played");
+    menu_row(CA_FORGET, "Remove from history");
 }
 
 void queue_menu_dir(App *a, float x, float y, int root, const FsNode *dir)
@@ -197,6 +198,7 @@ static void queue_menu_qrow(App *a, float x, float y, int qid, int idx)
     menu_row(CA_GOTO, M.item.kind == QK_VIDEO ? "Go to the show" : "Go to the album");
     menu_row(CA_MARK_PLAYED, M.item.kind == QK_VIDEO ? "Mark as watched" : "Mark as played");
     menu_row(CA_MARK_UNPLAYED, M.item.kind == QK_VIDEO ? "Mark as not watched" : "Mark as not played");
+    menu_row(CA_FORGET, "Remove from history");
     menu_row(CA_REMOVE, "Remove from the queue");
 }
 
@@ -289,6 +291,11 @@ static void run_action(App *a, int act)
         queue_transfer(from, M.qidx, to, false);
         break;
     }
+    case CA_FORGET:
+        history_remove(a->hist, M.item.rel, M.item.size);
+        app_history_changed();
+        app_toast(a, "Removed from history");
+        break;
     case CA_GOTO: goto_item(a, &M.item); break;
     case CA_MARK_PLAYED: mark_item(a, &M.item, true); break;
     case CA_MARK_UNPLAYED: mark_item(a, &M.item, false); break;

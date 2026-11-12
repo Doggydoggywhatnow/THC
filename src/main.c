@@ -47,6 +47,7 @@ bool app_history(App *a, const FsNode *file, HistoryEntry *e)
 }
 
 void app_history_changed(void) { g_hver++; }
+Uint64 app_history_version(void) { return g_hver; }
 
 /* ------------------------------------------------------------------------ */
 

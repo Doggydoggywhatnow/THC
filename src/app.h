@@ -114,6 +114,7 @@ char *app_full_path(const App *a, int root, const FsNode *n, char *buf, size_t c
 bool app_history(App *a, const FsNode *file, HistoryEntry *e);
 
 void app_history_changed(void);
+Uint64 app_history_version(void);   /* bumps whenever history changes (for caches) */
 
 /* player.c: the player: both queues, the backends, the bottom bar */
 #include "queue.h"

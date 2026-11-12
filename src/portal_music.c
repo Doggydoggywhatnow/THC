@@ -50,6 +50,116 @@ static bool embedded_art(const App *a, const FsNode *n, int depth, char *buf, si
     return false;
 }
 
+
+/* ---- listening history: rows of tracks you played ---- */
+
+static void ago(Sint64 then, char *out, size_t cap)
+{
+    SDL_Time now = 0;
+    SDL_GetCurrentTime(&now);
+    Sint64 d = (Sint64)(now / SDL_NS_PER_SECOND) - then;
+    if (d < 60) SDL_snprintf(out, cap, "just now");
+    else if (d < 3600) SDL_snprintf(out, cap, "%d min ago", (int)(d / 60));
+    else if (d < 86400) SDL_snprintf(out, cap, "%d h ago", (int)(d / 3600));
+    else SDL_snprintf(out, cap, "%d day%s ago", (int)(d / 86400), d / 86400 == 1 ? "" : "s");
+}
+
+static void history_section(App *a, float x, float *py, float w, const char *title, int mode)
+{
+    if (!a->hist) return;
+    Ui *ui = &a->ui;
+    const Theme *t = &ui->th;
+    PlayRow rows[16];
+    int n = history_plays_list(a->hist, KIND_MUSIC, mode, rows, 16);
+    FsNode *root = a->lib.root[ROOT_MUSIC];
+    const FsNode *nodes[16];
+    PlayRow keep[16];
+    int m = 0;
+    for (int i = 0; i < n; i++) {
+        FsNode *f = root ? fs_find(root, rows[i].path) : NULL;
+        if (f && !f->dir && f->size == rows[i].size) { nodes[m] = f; keep[m] = rows[i]; m++; }
+    }
+    if (!m) return;
+    draw_heading(a, x, *py, title, NULL);
+    *py += ui_line_h(ui, TS_TITLE) + dp(ui, 14);
+    float cs = dp(ui, 150), gap = dp(ui, 18);
+    float rowh = cs + dp(ui, 10) + ui_line_h(ui, TS_BODY) + ui_line_h(ui, TS_SMALL) * 2 + dp(ui, 8);
+    float mg = dp(ui, 14);
+    SDL_FRect view = { x - mg, *py - mg, w + 2 * mg, rowh + 2 * mg };
+    char sid[32];
+    SDL_snprintf(sid, sizeof sid, "hist-row-%d", mode);
+    float off = ui_scroll_begin(ui, ui_id(sid), view, true);
+    float cx = x - off;
+    for (int i = 0; i < m; i++) {
+        const FsNode *f = nodes[i];
+        SDL_FRect card = { cx, *py, cs, cs };
+        Uint32 id = ui_idi(sid, i);
+        UiItemState st = ui_item(ui, id, card);
+        if (st.focused || st.hover) { a->focus_file = f; a->focus_root = ROOT_MUSIC; }
+        if (st.context) {
+            float qx, qy;
+            ctx_pos(ui, card, &qx, &qy);
+            queue_menu_item(a, qx, qy, ROOT_MUSIC, f);
+        }
+        if (ui_visible(ui, (SDL_FRect){ cx - 8, *py - 8, cs + 16, rowh + 16 })) {
+            const TagInfo *tg = tag_get(a, ROOT_MUSIC, f);
+            char art[THC_PATH_MAX + 8] = "";
+            if (!tag_art_key(a, ROOT_MUSIC, f, art, sizeof art) && f->parent) {
+                const FsNode *an = fs_find_art(f->parent);
+                if (an) app_full_path(a, ROOT_MUSIC, an, art, sizeof art);
+            }
+            float lift = ui_anim_id(ui, id, (st.hover || st.focused) ? 1.0f : 0.0f, 14);
+            SDL_FRect c = { card.x - lift * dp(ui, 3), card.y - lift * dp(ui, 3), card.w + lift * dp(ui, 6), card.h + lift * dp(ui, 6) };
+            ui_shadow(ui, c, dp(ui, 12), dp(ui, 14), t->shadow);
+            char title2[256];
+            SDL_strlcpy(title2, tg && tg->title[0] ? tg->title : f->name, sizeof title2);
+            draw_cover(a, c, f->parent ? f->parent->name : title2, art[0] ? art : NULL, dp(ui, 12), ICON_NOTE);
+            if (st.focused) ui_focus_ring(ui, c, dp(ui, 12));
+            float ty = card.y + cs + dp(ui, 10);
+            ui_text_fit(ui, FONT_BOLD, TS_BODY, card.x, ty, cs, t->text, title2);
+            ty += ui_line_h(ui, TS_BODY);
+            const char *who = tg ? (tg->artist[0] ? tg->artist : tg->album_artist) : "";
+            ui_text_fit(ui, FONT_REGULAR, TS_SMALL, card.x, ty, cs, t->text_dim, who[0] ? who : (f->parent ? f->parent->name : ""));
+            ty += ui_line_h(ui, TS_SMALL);
+            char meta[64];
+            if (mode == PLAYS_MOST) SDL_snprintf(meta, sizeof meta, "%d play%s", keep[i].play_count, keep[i].play_count == 1 ? "" : "s");
+            else if (mode == PLAYS_IN_PROGRESS) {
+                char left[32];
+                fmt_time(keep[i].duration - keep[i].position, left, sizeof left);
+                SDL_snprintf(meta, sizeof meta, "%s left", left);
+            } else ago(keep[i].last_played, meta, sizeof meta);
+            ui_text_fit(ui, FONT_REGULAR, TS_SMALL, card.x, ty, cs, t->text_dim, meta);
+        }
+        if (st.activated) music_play_folder(a, ROOT_MUSIC, f, 0);
+        cx += cs + gap;
+    }
+    ui_scroll_end(ui, cx + off - x + dp(ui, 14));
+    *py += rowh + dp(ui, 30);
+}
+
+/* "3 of 12 tracks played" for an album, counted once per history change */
+static const char *album_played_text(App *a, const FsNode *dir, char *buf, size_t cap)
+{
+    static const FsNode *c_dir;
+    static Uint64 c_ver;
+    static int c_played, c_total;
+    if (c_dir != dir || c_ver != app_history_version()) {
+        c_dir = dir;
+        c_ver = app_history_version();
+        c_played = c_total = 0;
+        for (int i = 0; i < dir->nkids; i++) {
+            const FsNode *k = dir->kids[i];
+            if (k->dir || (k->kind != MK_AUDIO && k->kind != MK_AUDIO_MPV)) continue;
+            char rel[THC_PATH_MAX];
+            c_total++;
+            if (history_play_count(a->hist, fs_relpath(k, rel, sizeof rel), k->size) > 0) c_played++;
+        }
+    }
+    if (!c_total || !c_played) return NULL;
+    SDL_snprintf(buf, cap, "%d of %d tracks played", c_played, c_total);
+    return buf;
+}
+
 static bool cover_card(App *a, SDL_FRect r, const FsNode *n, bool round, const char *meta)
 {
     Ui *ui = &a->ui;
@@ -241,6 +351,9 @@ void portal_music(App *a, SDL_FRect area)
         SDL_snprintf(sub, sizeof sub, "%d artists  \xC2\xB7  %d tracks", albums_here, count_audio(root));
         ui_text(ui, FONT_REGULAR, TS_BODY, x, y, t->text_dim, sub);
         y += ui_line_h(ui, TS_BODY) + dp(ui, 28);
+        history_section(a, x, &y, w, "Continue listening", PLAYS_IN_PROGRESS);
+        history_section(a, x, &y, w, "Recently played", PLAYS_RECENT);
+        history_section(a, x, &y, w, "Most played", PLAYS_MOST);
         if (albums_here) {
             draw_heading(a, x, y, "Artists", NULL);
             y += ui_line_h(ui, TS_TITLE) + dp(ui, 16);
@@ -313,6 +426,14 @@ void portal_music(App *a, SDL_FRect area)
             }
             ui_text_fit(ui, FONT_REGULAR, TS_BODY, tx, ty, tw, t->text_dim, info);
             ty += ui_line_h(ui, TS_BODY);
+        }
+        {
+            char pb[64];
+            const char *pt = tracks_here ? album_played_text(a, dir, pb, sizeof pb) : NULL;
+            if (pt) {
+                ui_text_fit(ui, FONT_BOLD, TS_SMALL, tx, ty, tw, t->accent, pt);
+                ty += ui_line_h(ui, TS_SMALL);
+            }
         }
         ty += dp(ui, 16);
         if (tracks_here) {
