@@ -59,6 +59,57 @@ void app_toast(App *a, const char *fmt, ...)
     a->toast_until = a->ui.time + 3.5;
 }
 
+void app_confirm(App *a, int action, int arg, const char *title, const char *body, const char *yes)
+{
+    a->confirm.open = true;
+    a->confirm.fresh = true;
+    a->confirm.action = action;
+    a->confirm.arg = arg;
+    SDL_strlcpy(a->confirm.title, title, sizeof a->confirm.title);
+    SDL_strlcpy(a->confirm.body, body, sizeof a->confirm.body);
+    SDL_strlcpy(a->confirm.yes, yes, sizeof a->confirm.yes);
+}
+
+static void SDLCALL export_chosen(void *ud, const char *const *list, int filter)
+{
+    (void)filter;
+    App *a = ud;
+    if (!list || !list[0]) return;
+    FILE *f = fopen(list[0], "wb");
+    bool json = SDL_strstr(list[0], ".csv") == NULL;
+    bool ok = f && history_export(a->hist, f, json, -1);
+    if (f) fclose(f);
+    SDL_Log("history export to %s: %s", list[0], ok ? "ok" : "failed");
+}
+
+void app_export_history(App *a, bool json)
+{
+    static const SDL_DialogFileFilter jf[] = { { "JSON", "json" } }, cf[] = { { "CSV", "csv" } };
+    SDL_ShowSaveFileDialog(export_chosen, a, a->win, json ? jf : cf, 1, json ? "thc-history.json" : "thc-history.csv");
+    app_toast(a, "Choose where to save your history. THC writes only that file.");
+}
+
+void queue_confirmed_clear(App *a, int queue);   /* player.c */
+
+static void run_confirmed(App *a)
+{
+    switch (a->confirm.action) {
+    case CONFIRM_CLEAR_HISTORY:
+        if (a->confirm.arg < 0) {
+            history_clear(a->hist);
+        } else {
+            history_clear_kind(a->hist, a->confirm.arg);
+        }
+        if (a->confirm.arg < 0 || a->confirm.arg == KIND_VIDEO) video_clear_watch_later(a->mpv_dir);
+        app_history_changed();
+        app_toast(a, "History cleared");
+        break;
+    case CONFIRM_CLEAR_QUEUE:
+        queue_confirmed_clear(a, a->confirm.arg);
+        break;
+    }
+}
+
 void app_save_settings(App *a)
 {
     if (!settings_save(&a->set, a->settings_path)) SDL_Log("could not save %s", a->settings_path);
@@ -190,9 +241,9 @@ static void poll_dialog(App *a)
 
 static void save_video_progress(App *a)
 {
-    if (!a->play_key[0] || !a->set.remember_history) return;
+    if (!a->play_key[0] || !settings_history_on(&a->set, KIND_VIDEO)) return;
     if (a->video.failed && a->video.pos <= 0) return;
-    history_save(a->hist, a->play_key, a->play_size, a->video.pos, a->video.duration,
+    history_save_ex(a->hist, a->play_key, a->play_size, KIND_VIDEO, a->video.pos, a->video.duration,
                  a->set.watched_threshold, a->video.reached_eof);
     app_history_changed();
 }
@@ -217,7 +268,7 @@ void app_play_video(App *a, int root, const FsNode *file)
 
     VideoOptions o = { a->mpv_dir, 0, false, a->mpv_event };
     HistoryEntry e;
-    if (a->set.remember_history && history_get(a->hist, a->play_key, a->play_size, &e))
+    if (settings_history_on(&a->set, KIND_VIDEO) && history_get(a->hist, a->play_key, a->play_size, &e))
         o.start = history_resume_point(&e, a->set.watched_threshold);
     if (!video_play(&a->video, &a->mpv, path, &o)) {
         app_toast(a, "%s", a->video.error);
@@ -353,6 +404,7 @@ static void frame(App *a)
 {
     Ui *ui = &a->ui;
     ui->th = theme_make(portal_of(a->screen), a->dark, a->set.high_contrast, a->set.accent);
+    ui->modal_layer = a->confirm.open ? UI_MODAL_LAYER : 0;
     ui_begin(ui);
     a->focus_file = NULL;
     art_frame(a);
@@ -378,6 +430,14 @@ static void frame(App *a)
         video_pill(a);
     }
     chrome_toast(a);
+    if (a->confirm.open) {
+        int r = ui_confirm_dialog(ui, a->confirm.title, a->confirm.body, a->confirm.yes, "Cancel", a->confirm.fresh);
+        a->confirm.fresh = false;
+        if (r) {
+            a->confirm.open = false;
+            if (r == 1) run_confirmed(a);
+        }
+    }
     ui_end(ui);
     debug_script(a, ui->frame);
     SDL_RenderPresent(a->ren);
@@ -494,6 +554,10 @@ static void handle_event(App *a, SDL_Event *ev)
     bool used = ui_event(ui, ev);
     if (ev->type == SDL_EVENT_KEY_DOWN && !used) {
         SDL_Keycode k = ev->key.key;
+        if (a->confirm.open) {
+            if (k == SDLK_ESCAPE) a->confirm.open = false;
+            return;
+        }
         if (ui->text_active) {
             if (k == SDLK_ESCAPE) ui->focus = 0;
             return;

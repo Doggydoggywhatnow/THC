@@ -59,12 +59,12 @@ static double dur_now(void)
 
 static void save_book(App *a, bool reached_end)
 {
-    if (!book_mode() || P.n == 0 || !a->set.remember_history) return;
+    if (!book_mode() || P.n == 0 || !settings_history_on(&a->set, KIND_BOOK)) return;
     QItem *it = &P.q[P.cur];
     double d = dur_now();
     double pos = reached_end && d > 0 ? d : pos_now();
     if (pos <= 0 && !reached_end) return;
-    history_save(a->hist, it->key, it->size, pos, d, a->set.watched_threshold, reached_end);
+    history_save_ex(a->hist, it->key, it->size, KIND_BOOK, pos, d, a->set.watched_threshold, reached_end);
     app_history_changed();
 }
 

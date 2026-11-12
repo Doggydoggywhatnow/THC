@@ -1734,3 +1734,37 @@ int ui_capture_lr(Ui *ui, Uint32 id)
     g_lr_pending = 0;
     return v;
 }
+
+int ui_confirm_dialog(Ui *ui, const char *title, const char *body, const char *yes, const char *no, bool first_frame)
+{
+    const Theme *t = &ui->th;
+    int saved = ui->layer;
+    ui->layer = UI_MODAL_LAYER;
+    ui_fill(ui, (SDL_FRect){ 0, 0, (float)ui->w, (float)ui->h }, rgba(0x000000, 170), 0);
+    float w = SDL_min(dp(ui, 480), ui->w - dp(ui, 40));
+    float pad = dp(ui, 28);
+    float th = ui_line_h(ui, TS_TITLE);
+    /* measure the body by drawing it off-screen is not possible: estimate the lines */
+    float lh = ui_line_h(ui, TS_BODY);
+    int lines = (int)(ui_text_w(ui, FONT_REGULAR, TS_BODY, body) / (w - 2 * pad)) + 1;
+    float h = pad + th + dp(ui, 10) + lines * lh + dp(ui, 26) + dp(ui, 48) + pad;
+    SDL_FRect r = { (ui->w - w) / 2, (ui->h - h) / 2, w, h };
+    ui_shadow(ui, r, dp(ui, 22), dp(ui, 40), rgba(0x000000, 200));
+    ui_fill(ui, r, t->surface, dp(ui, 22));
+    ui_stroke(ui, r, t->high_contrast ? t->border : with_alpha(t->border, 255), dp(ui, 22), dp(ui, t->high_contrast ? 2 : 1));
+    float y = r.y + pad;
+    ui_text_fit(ui, FONT_BOLD, TS_TITLE, r.x + pad, y, w - 2 * pad, t->text, title);
+    y += th + dp(ui, 10);
+    ui_text_wrap(ui, FONT_REGULAR, TS_BODY, r.x + pad, y, w - 2 * pad, t->text_dim, body, 8);
+    float by = r.y + h - pad - dp(ui, 48);
+    float bw = (w - 2 * pad - dp(ui, 12)) / 2;
+    Uint32 id_no = ui_id("confirm-no");
+    if (first_frame) ui_focus(ui, id_no);
+    int result = 0;
+    if (ui_button(ui, id_no, (SDL_FRect){ r.x + pad, by, bw, dp(ui, 48) }, no, ICON_NONE, false)) result = 2;
+    if (ui_button(ui, ui_id("confirm-yes"), (SDL_FRect){ r.x + pad + bw + dp(ui, 12), by, bw, dp(ui, 48) }, yes, ICON_NONE, true))
+        result = 1;
+    ui->layer = saved;
+    ui->needs_redraw = true;
+    return result;
+}

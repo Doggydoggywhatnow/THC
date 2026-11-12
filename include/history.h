@@ -10,6 +10,7 @@
 #define THC_HISTORY_H
 
 #include <stdbool.h>
+#include <stdio.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -56,6 +57,44 @@ bool history_set_watched(History *h, const char *rel_path, int64_t size, bool wa
 
 /* Most recently updated, unfinished entries (position > 0, not watched). */
 int history_in_progress(History *h, HistoryRow *rows, int max_rows);
+
+/* Like history_save, and records what kind of media it is (KIND_* in settings.h). */
+bool history_save_ex(History *h, const char *rel_path, int64_t size, int kind, double position,
+                     double duration, double threshold, bool reached_end);
+
+/* ---- version 2: plays, kinds, backlog ---- */
+/* One counted play (a song reached the play threshold, an audiobook part or video finished). */
+bool history_record_play(History *h, const char *rel_path, int64_t size, int kind, double listened_seconds);
+int history_play_count(History *h, const char *rel_path, int64_t size);
+/* Delete the history (and plays and saved backlog) of one kind only. */
+bool history_clear_kind(History *h, int kind);
+/* Forget one item. */
+bool history_remove(History *h, const char *rel_path, int64_t size);
+
+typedef struct PlayRow {
+    char path[1024];
+    int64_t size;
+    int kind;
+    int play_count;
+    int64_t last_played;
+    double duration, position;
+} PlayRow;
+enum { PLAYS_RECENT = 0, PLAYS_MOST, PLAYS_IN_PROGRESS };
+int history_plays_list(History *h, int kind, int mode, PlayRow *rows, int max);
+
+/* Write history as JSON or CSV (kind -1 = all). */
+bool history_export(History *h, FILE *f, bool json, int kind);
+
+/* The queue backlog kept between sessions (only when the user turns that on). */
+typedef struct BacklogRow {
+    char path[1024];
+    int64_t size;
+    int kind;
+    char title[256];
+    int64_t played_at;
+} BacklogRow;
+bool history_backlog_save(History *h, int queue, const BacklogRow *rows, int n);
+int history_backlog_load(History *h, int queue, BacklogRow *rows, int max);
 
 /* Delete everything. */
 bool history_clear(History *h);

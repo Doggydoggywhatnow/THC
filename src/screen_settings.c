@@ -11,7 +11,6 @@ static const char *const k_cat_names[CAT_COUNT] = { "Library", "Playback", "Appe
 
 static int g_cat;
 static int g_capture = -1;        /* action waiting for a key press */
-static double g_clear_armed;      /* "clear history" needs a second press */
 static char g_font_field[THC_PATH_MAX];
 static char g_mpv_field[THC_PATH_MAX];
 static bool g_fields_init;
@@ -210,6 +209,16 @@ static void page_playback(App *a, Layout *L)
     float vol = (float)a->set.volume;
     if (ui_slider(ui, ui_id("set-vol"), next_row(a, L, 0), "Volume", &vol, 0, 100, 5, "%.0f%%")) {
         a->set.volume = (int)vol;
+        app_save_settings(a);
+    }
+    float pt = (float)a->set.play_threshold_music;
+    if (ui_slider(ui, ui_id("set-playthr"), next_row(a, L, 0), "A song counts as played at", &pt, 50, 100, 5, "%.0f%%")) {
+        a->set.play_threshold_music = (int)pt;
+        app_save_settings(a);
+    }
+    float rm = (float)a->set.music_resume_min_minutes;
+    if (ui_slider(ui, ui_id("set-resumemin"), next_row(a, L, 0), "Resume songs longer than", &rm, 0, 60, 1, "%.0f min")) {
+        a->set.music_resume_min_minutes = (int)rm;
         app_save_settings(a);
     }
     float skip = (float)a->set.skip_seconds;
@@ -739,24 +748,40 @@ static void page_privacy(App *a, Layout *L)
     note(a, L, ICON_SHIELD,
          "Everything stays on this device. THC makes no network requests, has no accounts and sends no "
          "telemetry. What you watch is your business.");
-    group(a, L, "Watch history", NULL);
-    if (ui_toggle(ui, ui_id("set-hist"), next_row(a, L, dp(ui, 72)), "Remember where I stopped",
-                  "Resume positions, playback bars and checkmarks", &a->set.remember_history))
-        app_save_settings(a);
-    bool armed = ui->time < g_clear_armed;
-    if (ui_button(ui, ui_id("set-clear"), (SDL_FRect){ L->x, L->y, dp(ui, 280), dp(ui, 46) },
-                  armed ? "Press again to clear" : "Clear watch history", ICON_CLOSE, armed)) {
-        if (armed) {
-            history_clear(a->hist);
-            video_clear_watch_later(a->mpv_dir);
-            app_history_changed();
-            g_clear_armed = 0;
-            app_toast(a, "Watch history cleared");
-        } else {
-            g_clear_armed = ui->time + 4;
+    group(a, L, "History",
+          "Where you stopped, what you watched and what you played. History is kept until you clear it. Turning a "
+          "switch off stops recording for that portal (so resume does not work there); what is already saved stays "
+          "until you clear it.");
+    static const char *const names[KIND_COUNT] = { "Video history", "Music history", "Audiobook history" };
+    static const char *const hints[KIND_COUNT] = { "Resume positions, playback bars and checkmarks",
+                                                   "Plays, recently played and most played",
+                                                   "Your place in every book" };
+    bool *flags[KIND_COUNT] = { &a->set.history_video, &a->set.history_music, &a->set.history_books };
+    for (int k = 0; k < KIND_COUNT; k++)
+        if (ui_toggle(ui, ui_idi("set-hist", k), next_row(a, L, dp(ui, 72)), names[k], hints[k], flags[k]))
+            app_save_settings(a);
+    if (ui_toggle(ui, ui_id("set-private"), next_row(a, L, dp(ui, 72)), "Private session",
+                  "Record nothing until THC restarts. Not saved.", &a->set.private_session))
+        app_toast(a, a->set.private_session ? "Private session on: nothing is recorded" : "Private session off");
+    float bw = dp(ui, 200);
+    float bx = L->x;
+    static const char *const clear_names[KIND_COUNT] = { "Clear video", "Clear music", "Clear audiobooks" };
+    static const char *const clear_what[KIND_COUNT] = { "video", "music", "audiobook" };
+    for (int k = 0; k < KIND_COUNT; k++) {
+        if (ui_button(ui, ui_idi("set-clear", k), (SDL_FRect){ bx, L->y, bw, dp(ui, 46) }, clear_names[k], ICON_CLOSE, false)) {
+            char body[200];
+            SDL_snprintf(body, sizeof body, "This deletes your %s history: positions, plays and checkmarks. It cannot be undone.",
+                         clear_what[k]);
+            app_confirm(a, CONFIRM_CLEAR_HISTORY, k, "Clear history?", body, "Clear");
         }
+        bx += bw + dp(ui, 10);
+        if (bx + bw > L->x + L->w && k < KIND_COUNT - 1) { bx = L->x; L->y += dp(ui, 46) + dp(ui, 10); }
     }
-    if (armed) ui->needs_redraw = true;
+    L->y += dp(ui, 46) + L->gap;
+    if (ui_button(ui, ui_id("set-export-json"), (SDL_FRect){ L->x, L->y, dp(ui, 230), dp(ui, 46) }, "Export as JSON", ICON_SORT, false))
+        app_export_history(a, true);
+    if (ui_button(ui, ui_id("set-export-csv"), (SDL_FRect){ L->x + dp(ui, 242), L->y, dp(ui, 230), dp(ui, 46) }, "Export as CSV", ICON_SORT, false))
+        app_export_history(a, false);
     L->y += dp(ui, 46) + L->gap;
     group(a, L, "Your data", "Settings (settings.ini), the history database (history.db) and THC's MPV folder live here. "
                              "You can inspect or delete them at any time.");

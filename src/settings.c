@@ -1,6 +1,7 @@
 #include "settings.h"
 
 #include <ctype.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -27,7 +28,88 @@ const ActionInfo k_actions[ACT_COUNT] = {
     { "text_bigger", "Larger text", "Ctrl+=" },
     { "text_smaller", "Smaller text", "Ctrl+-" },
     { "fullscreen", "Fullscreen", "F11" },
+    { "queue_panel", "Show or hide the queue", "Q" },
+    { "queue_add", "Add to the queue", "A" },
+    { "queue_play_next", "Play next (queue)", "Shift+A" },
+    { "queue_up", "Move up in the queue", "Alt+Up" },
+    { "queue_down", "Move down in the queue", "Alt+Down" },
+    { "queue_remove", "Remove from the queue", "Delete" },
+    { "search", "Search music", "/" },
+    { "video_ontop", "Video window on top", "Ctrl+T" },
 };
+
+/* ---- table-driven settings (the 0.2.0 additions) ---- */
+enum { ST_BOOL, ST_INT, ST_ENUM };
+typedef struct SettingDef {
+    const char *key;
+    int type;
+    size_t off;
+    int def, lo, hi;
+    const char *const *names;   /* ST_ENUM: the words in settings.ini */
+    bool save;
+} SettingDef;
+
+static const char *const n_repeat[] = { "off", "one", "all", NULL };
+static const char *const n_addpos[] = { "end", "next", NULL };
+static const char *const n_target[] = { "home", "active", NULL };
+static const char *const n_chain[] = { "none", "other", NULL };
+static const char *const n_vim[] = { "window", "listen", "skip", NULL };
+static const char *const n_scope[] = { "all", "artists", "albums", "songs", NULL };
+static const char *const n_keys[] = { "off", "focused", "global", NULL };
+static const char *const n_titles[] = { "full", "playing-only", NULL };
+static const char *const n_ontop[] = { "off", "playing", "always", NULL };
+static const char *const n_level[] = { "window", "system", NULL };
+
+#define B(key, field, def) { key, ST_BOOL, offsetof(Settings, field), def, 0, 1, NULL, true }
+#define I(key, field, def, lo, hi) { key, ST_INT, offsetof(Settings, field), def, lo, hi, NULL, true }
+#define E(key, field, def, names) { key, ST_ENUM, offsetof(Settings, field), def, 0, 0, names, true }
+static const SettingDef k_defs[] = {
+    B("history_video", history_video, 1), B("history_music", history_music, 1), B("history_books", history_books, 1),
+    B("mpv_block_network", mpv_block_network, 1),
+    I("play_threshold_music", play_threshold_music, 65, 50, 100),
+    I("music_resume_min_minutes", music_resume_min_minutes, 10, 0, 60),
+    B("queue_auto_advance_video", queue_auto_advance_video, 1), B("queue_next_countdown", queue_next_countdown, 0),
+    E("queue_repeat", queue_repeat, 0, n_repeat), B("queue_shuffle", queue_shuffle, 0),
+    B("queue_prev_restarts", queue_prev_restarts, 1), E("queue_add_position", queue_add_position, 0, n_addpos),
+    E("queue_add_target", queue_add_target, 0, n_target),
+    B("queue_resume_video", queue_resume_video, 1), B("queue_resume_song", queue_resume_song, 0),
+    B("queue_resume_book", queue_resume_book, 1), B("queue_season_unwatched_only", queue_season_unwatched_only, 0),
+    B("queue_keep_backlog", queue_keep_backlog, 0), E("queue_chain_music", queue_chain_music, 0, n_chain),
+    E("queue_chain_video", queue_chain_video, 0, n_chain), E("queue_video_in_music", queue_video_in_music, 0, n_vim),
+    B("queue_pause_music_on_video", queue_pause_music_on_video, 1),
+    B("queue_resume_music_after_video", queue_resume_music_after_video, 1),
+    B("queue_export_relative", queue_export_relative, 1),
+    B("search_remember_scope", search_remember_scope, 0), E("search_last_scope", search_last_scope, 0, n_scope),
+    I("search_results_per_group", search_results_per_group, 5, 3, 20), B("search_clear_on_leave", search_clear_on_leave, 1),
+    E("mediakeys_mode", mediakeys_mode, 2, n_keys), B("nowplaying_music", nowplaying_music, 1),
+    B("nowplaying_books", nowplaying_books, 1), B("nowplaying_video", nowplaying_video, 0),
+    E("nowplaying_titles", nowplaying_titles, 0, n_titles), B("nowplaying_art", nowplaying_art, 1),
+    I("mediakeys_seek_seconds", mediakeys_seek_seconds, 10, 5, 60),
+    E("video_ontop", video_ontop, 0, n_ontop), E("video_ontop_macos_level", video_ontop_macos_level, 0, n_level),
+    B("video_ontop_ignore_fullscreen", video_ontop_ignore_fullscreen, 1),
+};
+#undef B
+#undef I
+#undef E
+#define NDEFS ((int)(sizeof k_defs / sizeof k_defs[0]))
+
+static void *def_ptr(Settings *s, const SettingDef *d) { return (char *)s + d->off; }
+
+static void apply_default(Settings *s, const SettingDef *d)
+{
+    if (d->type == ST_BOOL) *(bool *)def_ptr(s, d) = d->def != 0;
+    else *(int *)def_ptr(s, d) = d->def;
+}
+
+bool settings_history_on(const Settings *s, int kind)
+{
+    if (s->private_session) return false;
+    switch (kind) {
+    case KIND_MUSIC: return s->history_music;
+    case KIND_BOOK: return s->history_books;
+    default: return s->history_video;
+    }
+}
 
 void settings_defaults(Settings *s)
 {
@@ -41,7 +123,7 @@ void settings_defaults(Settings *s)
     s->accent = 0;
     s->text_scale = 1.0f;
     s->ui_scale = 1.0f;
-    s->remember_history = true;
+    for (int i = 0; i < NDEFS; i++) apply_default(s, &k_defs[i]);
     s->video_thumbs = true;
     for (int i = 0; i < ACT_COUNT; i++)
         snprintf(s->hotkey[i], sizeof s->hotkey[i], "%s", k_actions[i].def);
@@ -64,10 +146,30 @@ static double clampd(double v, double lo, double hi) { return v < lo ? lo : v > 
 
 #define STR(field) snprintf(s->field, sizeof s->field, "%s", v)
 
+static bool parse_def(Settings *s, const char *k, const char *v, bool *seen_history)
+{
+    for (int i = 0; i < NDEFS; i++) {
+        const SettingDef *d = &k_defs[i];
+        if (strcmp(k, d->key)) continue;
+        if (d->type == ST_BOOL) *(bool *)def_ptr(s, d) = parse_bool(v);
+        else if (d->type == ST_INT) *(int *)def_ptr(s, d) = (int)clampd(atoi(v), d->lo, d->hi);
+        else {
+            int val = d->def;
+            for (int n = 0; d->names[n]; n++)
+                if (!strcmp(v, d->names[n])) val = n;
+            *(int *)def_ptr(s, d) = val;
+        }
+        if (!strncmp(k, "history_", 8)) *seen_history = true;
+        return true;
+    }
+    return false;
+}
+
 bool settings_load(Settings *s, const char *path)
 {
     FILE *f = fopen(path, "rb");
     if (!f) return false;
+    bool legacy_remember = false, legacy_value = true, seen_history_key = false;
     char line[THC_PATH_MAX * 2 + 64];
     while (fgets(line, sizeof line, f)) {
         char *p = trim(line);
@@ -95,9 +197,10 @@ bool settings_load(Settings *s, const char *path)
         else if (!strcmp(k, "high_contrast")) s->high_contrast = parse_bool(v);
         else if (!strcmp(k, "reduced_motion")) s->reduced_motion = parse_bool(v);
         else if (!strcmp(k, "screen_reader")) s->screen_reader = parse_bool(v);
-        else if (!strcmp(k, "remember_history")) s->remember_history = parse_bool(v);
+        else if (!strcmp(k, "remember_history")) { legacy_remember = true; legacy_value = parse_bool(v); }
         else if (!strcmp(k, "video_thumbs")) s->video_thumbs = parse_bool(v);
         else if (!strcmp(k, "last_portal")) s->last_portal = (int)clampd(atoi(v), 0, 2);
+        else if (parse_def(s, k, v, &seen_history_key)) { /* a table-driven setting */ }
         else if (!strncmp(k, "section.", 8)) {
             for (int i = 0; i < SECTION_COUNT; i++)
                 if (!strcmp(k + 8, k_section_keys[i]))
@@ -111,6 +214,9 @@ bool settings_load(Settings *s, const char *path)
         }
     }
     fclose(f);
+    /* 0.1.x had one switch for all history; it becomes the three per-portal switches */
+    if (legacy_remember && !seen_history_key)
+        s->history_video = s->history_music = s->history_books = legacy_value;
     return true;
 }
 
@@ -148,8 +254,15 @@ bool settings_save(const Settings *s, const char *path)
     fprintf(f, "reduced_motion = %d\n", s->reduced_motion);
     fprintf(f, "screen_reader = %d\n", s->screen_reader);
     fprintf(f, "\n[privacy]\n");
-    fprintf(f, "remember_history = %d\n", s->remember_history);
     fprintf(f, "video_thumbs = %d\n", s->video_thumbs);
+    fprintf(f, "\n[history, queue, search, media keys, window]\n");
+    for (int i = 0; i < NDEFS; i++) {
+        const SettingDef *d = &k_defs[i];
+        void *p = (char *)s + d->off;
+        if (d->type == ST_BOOL) fprintf(f, "%s = %d\n", d->key, *(bool *)p);
+        else if (d->type == ST_INT) fprintf(f, "%s = %d\n", d->key, *(int *)p);
+        else fprintf(f, "%s = %s\n", d->key, d->names[*(int *)p]);
+    }
     fprintf(f, "\n[hotkeys]\n");
     for (int i = 0; i < ACT_COUNT; i++) fprintf(f, "hotkey.%s = %s\n", k_actions[i].key, s->hotkey[i]);
     fprintf(f, "\n[state]\n");

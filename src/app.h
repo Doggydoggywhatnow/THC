@@ -88,6 +88,9 @@ typedef struct App {
     int dlg_target;                /* which setting to fill */
     bool dlg_ready;
 
+    /* a modal confirmation window (clear history, clear queue) */
+    struct { bool open, fresh; int action, arg; char title[96], body[320], yes[48]; } confirm;
+
     /* small notification at the bottom */
     char toast[256];
     double toast_until;
@@ -95,6 +98,9 @@ typedef struct App {
 
 /* main.c */
 void app_toast(App *a, const char *fmt, ...);
+void app_export_history(App *a, bool json);
+enum { CONFIRM_CLEAR_HISTORY = 1, CONFIRM_CLEAR_QUEUE };
+void app_confirm(App *a, int action, int arg, const char *title, const char *body, const char *yes);
 void app_save_settings(App *a);
 void app_apply_appearance(App *a);
 void app_play_video(App *a, int root, const FsNode *file);

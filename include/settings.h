@@ -36,6 +36,14 @@ typedef enum Action {
     ACT_TEXT_BIGGER,
     ACT_TEXT_SMALLER,
     ACT_FULLSCREEN,
+    ACT_QUEUE_PANEL,
+    ACT_QUEUE_ADD,
+    ACT_QUEUE_PLAY_NEXT,
+    ACT_QUEUE_UP,
+    ACT_QUEUE_DOWN,
+    ACT_QUEUE_REMOVE,
+    ACT_SEARCH,
+    ACT_ONTOP,
     ACT_COUNT
 } Action;
 
@@ -45,6 +53,21 @@ typedef struct ActionInfo {
     const char *def;      /* default key name (SDL key names) */
 } ActionInfo;
 extern const ActionInfo k_actions[ACT_COUNT];
+
+/* Kinds of media with their own history switch. */
+enum { KIND_VIDEO = 0, KIND_MUSIC = 1, KIND_BOOK = 2, KIND_COUNT };
+
+/* Values of the choice settings (stored in settings.ini as words, see k_*_names in settings.c). */
+enum { REPEAT_OFF = 0, REPEAT_ONE, REPEAT_ALL };
+enum { ADD_END = 0, ADD_NEXT };
+enum { TARGET_HOME = 0, TARGET_ACTIVE };
+enum { CHAIN_NONE = 0, CHAIN_OTHER };
+enum { VIDEO_IN_MUSIC_WINDOW = 0, VIDEO_IN_MUSIC_LISTEN, VIDEO_IN_MUSIC_SKIP };
+enum { SCOPE_ALL = 0, SCOPE_ARTISTS, SCOPE_ALBUMS, SCOPE_SONGS };
+enum { KEYS_OFF = 0, KEYS_FOCUSED, KEYS_GLOBAL };
+enum { TITLES_FULL = 0, TITLES_PLAYING_ONLY };
+enum { ONTOP_OFF = 0, ONTOP_PLAYING, ONTOP_ALWAYS };
+enum { LEVEL_WINDOW = 0, LEVEL_SYSTEM };
 
 /* A presentation-only override: show a folder in a different section. */
 #define MAX_OVERRIDES 256
@@ -85,8 +108,36 @@ typedef struct Settings {
     bool reduced_motion;
     bool screen_reader;         /* planned: stored, not used yet */
 
-    /* Privacy */
-    bool remember_history;      /* record watch history at all */
+    /* Privacy: history is recorded per portal. private_session is never saved. */
+    bool history_video, history_music, history_books;
+    bool private_session;
+    bool mpv_block_network;     /* THC's MPV: no ytdl, no URLs, no network protocols */
+
+    /* Listening */
+    int play_threshold_music;   /* percent of a track that counts as a play, 50..100 */
+    int music_resume_min_minutes; /* songs shorter than this start at 0 */
+
+    /* Queue */
+    bool queue_auto_advance_video, queue_next_countdown, queue_shuffle, queue_prev_restarts;
+    int queue_repeat, queue_add_position, queue_add_target;
+    bool queue_resume_video, queue_resume_song, queue_resume_book;
+    bool queue_season_unwatched_only, queue_keep_backlog;
+    int queue_chain_music, queue_chain_video, queue_video_in_music;
+    bool queue_pause_music_on_video, queue_resume_music_after_video, queue_export_relative;
+
+    /* Search */
+    bool search_remember_scope;
+    int search_last_scope, search_results_per_group;
+    bool search_clear_on_leave;
+
+    /* Media keys and now playing */
+    int mediakeys_mode;
+    bool nowplaying_music, nowplaying_books, nowplaying_video, nowplaying_art;
+    int nowplaying_titles, mediakeys_seek_seconds;
+
+    /* Always on top (THC's MPV window) */
+    int video_ontop, video_ontop_macos_level;
+    bool video_ontop_ignore_fullscreen;
 
     /* Hotkeys: SDL key names, e.g. "Space", "Ctrl+Right" */
     char hotkey[ACT_COUNT][32];
@@ -99,6 +150,9 @@ void settings_defaults(Settings *s);
 /* Returns false if the file does not exist (defaults are kept). */
 bool settings_load(Settings *s, const char *path);
 bool settings_save(const Settings *s, const char *path);
+
+/* Is history recorded for this kind of media right now? (off for a portal, or in a private session: no) */
+bool settings_history_on(const Settings *s, int kind);
 
 /* Section override lookup; returns -2 if there is none. */
 int settings_override(const Settings *s, const char *key);

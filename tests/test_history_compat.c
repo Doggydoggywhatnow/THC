@@ -1,6 +1,7 @@
 /* History must work across THC versions: a new version reads and upgrades an old database, and an
  * old version leaves a newer database alone. */
 #include "history.h"
+#include "settings.h"
 #include "test_util.h"
 
 #include <sqlite3.h>
@@ -49,7 +50,8 @@ int main(void)
     sql(k_v1);
     History *h = history_open(DB, err, sizeof err);
     CHECK(h != NULL);
-    CHECK(history_schema_version(h) == 1);
+    CHECK(history_schema_version(h) == 2);               /* upgraded to 0.2.0's version... */
+    CHECK(exists(DB ".v1.bak"));                         /* ...after keeping a copy */
     CHECK(history_get(h, "Show/S1/E1.mkv", 1000, &e) && e.position == 700 && !e.watched);
     CHECK(history_get(h, "Movie.mkv", 5000, &e) && e.watched && e.watch_count == 1);
     CHECK(history_save(h, "Show/S1/E1.mkv", 1000, 800, 1400, 0.9, false));
@@ -63,7 +65,7 @@ int main(void)
         "INSERT INTO history(path,size,position) VALUES('a.mkv',1,42); COMMIT;");
     h = history_open(DB, err, sizeof err);
     CHECK(h && history_get(h, "a.mkv", 1, &e) && e.position == 42);
-    CHECK(history_schema_version(h) == 1);
+    CHECK(history_schema_version(h) == 2);
     history_close(h);
 
     /* 3. migrating forward: version 1 -> 3, with a backup, keeping every row */
@@ -85,7 +87,7 @@ int main(void)
     /* 4. an OLDER version (knows only version 1) opens that version-3 database, reads and writes it,
      *    and does not downgrade it or drop what it does not know */
     sql("UPDATE history SET note='keep me', rating=5 WHERE size=1000;");
-    h = history_open(DB, err, sizeof err);
+    h = history_open_ex(DB, 1, NULL, err, sizeof err);   /* an older THC, version 1 */
     CHECK(h != NULL);
     CHECK(history_schema_version(h) == 3);
     CHECK(history_get(h, "Show/S1/E1.mkv", 1000, &e) && e.position == 700);
@@ -115,15 +117,53 @@ int main(void)
     h = history_open_ex(DB, 2, bad, err, sizeof err);
     CHECK(h == NULL);
     CHECK(strstr(err, "unchanged") != NULL);
-    h = history_open(DB, err, sizeof err);
+    h = history_open_ex(DB, 1, NULL, err, sizeof err);   /* what an older THC would do */
     CHECK(h && history_schema_version(h) == 1 && history_get(h, "Movie.mkv", 5000, &e));
     history_close(h);
 
     /* 6. a brand-new database gets the current version */
     clean();
     h = history_open(DB, err, sizeof err);
-    CHECK(h && history_schema_version(h) == 1);
+    CHECK(h && history_schema_version(h) == 2);
     CHECK(history_save(h, "x.mkv", 1, 5, 10, 0.9, false));
+    history_close(h);
+
+    /* 7. version 2 features: kinds, plays, clearing one portal, backlog, export, old data kept */
+    clean();
+    sql(k_v1);
+    h = history_open(DB, err, sizeof err);
+    CHECK(h != NULL);
+    CHECK(history_get(h, "Show/S1/E1.mkv", 1000, &e) && e.position == 700);      /* old rows intact */
+    CHECK(history_save_ex(h, "Music/Artist/Album/s.flac", 111, KIND_MUSIC, 0, 200, 0.9, false));
+    CHECK(history_save_ex(h, "Books/Author/b.m4b", 222, KIND_BOOK, 50, 3600, 0.9, false));
+    CHECK(history_record_play(h, "Music/Artist/Album/s.flac", 111, KIND_MUSIC, 150));
+    CHECK(history_record_play(h, "Music/Artist/Album/s.flac", 111, KIND_MUSIC, 190));
+    CHECK(history_record_play(h, "Music/Artist/Album/t.flac", 112, KIND_MUSIC, 100));   /* no row yet: created */
+    CHECK(history_play_count(h, "Music/Artist/Album/s.flac", 111) == 2);
+    PlayRow pr[8];
+    CHECK(history_plays_list(h, KIND_MUSIC, PLAYS_MOST, pr, 8) == 2 && pr[0].play_count == 2);
+    CHECK(history_plays_list(h, KIND_MUSIC, PLAYS_RECENT, pr, 8) == 2);
+    CHECK(history_plays_list(h, KIND_BOOK, PLAYS_IN_PROGRESS, pr, 8) == 1);
+    BacklogRow br[2] = { { "Music/a.flac", 1, KIND_MUSIC, "A", 5 }, { "Music/b.flac", 2, KIND_MUSIC, "B", 6 } };
+    CHECK(history_backlog_save(h, 0, br, 2));
+    BacklogRow back[4];
+    CHECK(history_backlog_load(h, 0, back, 4) == 2 && !strcmp(back[1].title, "B"));
+    {
+        FILE *f = fopen("thc_test_export.csv", "w+");
+        CHECK(history_export(h, f, false, KIND_MUSIC));
+        fclose(f);
+        f = fopen("thc_test_export.json", "w+");
+        CHECK(history_export(h, f, true, -1));
+        fclose(f);
+        remove("thc_test_export.csv");
+        remove("thc_test_export.json");
+    }
+    CHECK(history_clear_kind(h, KIND_MUSIC));                                    /* only music goes */
+    CHECK(history_plays_list(h, KIND_MUSIC, PLAYS_RECENT, pr, 8) == 0);
+    CHECK(history_backlog_load(h, 0, back, 4) == 0);
+    CHECK(history_get(h, "Books/Author/b.m4b", 222, &e));                        /* audiobooks stay */
+    CHECK(history_get(h, "Show/S1/E1.mkv", 1000, &e) && e.position == 700);      /* video stays */
+    CHECK(history_remove(h, "Books/Author/b.m4b", 222) && !history_get(h, "Books/Author/b.m4b", 222, &e));
     history_close(h);
     clean();
     TEST_DONE();

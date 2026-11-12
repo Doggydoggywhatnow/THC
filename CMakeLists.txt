@@ -169,6 +169,7 @@ if(THC_BUILD_APP)
     src/third_party.c
     src/ui.c
     src/video.c
+    src/player_stub.c
     ${CMAKE_CURRENT_BINARY_DIR}/font_regular.c
     ${CMAKE_CURRENT_BINARY_DIR}/font_bold.c)
   target_include_directories(thc PRIVATE include src third_party/stb)

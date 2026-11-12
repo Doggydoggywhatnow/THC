@@ -222,6 +222,12 @@ bool ui_textfield(Ui *ui, Uint32 id, SDL_FRect r, char *buf, size_t cap, const c
  * moving focus. Returns -1, 0 or +1 for this frame. */
 int ui_capture_lr(Ui *ui, Uint32 id);
 
+/* A real modal dialog: dims the window and takes all input until answered. The caller keeps
+ * `ui->modal_layer = 5` while it is open (so nothing underneath can be reached) and calls this
+ * last in the frame. Returns 0 while open, 1 for the confirm button, 2 for cancel. */
+#define UI_MODAL_LAYER 5
+int ui_confirm_dialog(Ui *ui, const char *title, const char *body, const char *yes, const char *no, bool first_frame);
+
 /* Progress bar with an optional watched checkmark at its end. */
 void ui_progress(Ui *ui, SDL_FRect r, float frac, Color fill);
 void ui_watch_status(Ui *ui, SDL_FRect r, float frac, bool watched, Color fill);
