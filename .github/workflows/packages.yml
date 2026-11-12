@@ -47,6 +47,21 @@ jobs:
       - uses: actions/upload-artifact@v4
         with: { name: inspect-linux, path: out/* }
 
+  thc-windows:
+    # THC itself for Windows: one .exe with the C runtime built in. SDL3 and SQLite are built from source into it.
+    # libmpv is loaded at run time: put libmpv-2.dll (mpv.io builds) next to thc.exe to play media.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ilammy/setup-nasm@v1
+      - run: |
+          cmake -S . -B build-win -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded
+          cmake --build build-win --config Release --parallel --target thc
+          mkdir out
+          copy build-win\Release\thc.exe out\thc-0.3.1-windows-x86_64.exe
+      - uses: actions/upload-artifact@v4
+        with: { name: thc-windows, path: out/* }
+
   inspect-windows:
     runs-on: windows-latest
     steps:
@@ -120,7 +135,7 @@ jobs:
     # to them directly (no GitHub login needed). Pushes by GITHUB_TOKEN do
     # not start new workflow runs.
     if: always() && github.ref == 'refs/heads/dev' && github.event_name != 'pull_request'
-    needs: [deb-appimage, alpine, void, inspect-linux, inspect-windows, inspect-macos]
+    needs: [deb-appimage, alpine, void, thc-windows, inspect-linux, inspect-windows, inspect-macos]
     runs-on: ubuntu-latest
     permissions: { contents: write }
     steps:
@@ -136,7 +151,7 @@ jobs:
           mkdir -p downloads              # git rm removes an emptied folder
           # a package that failed to build this time keeps its previous file
           for f in dist/thc_0.3.1_amd64.deb dist/THC-*.AppImage dist/*.xbps dist/thc-0.3.1-linux-x86_64.tar.gz \
-                   dist/thc-0.3.1-r0-alpine-x86_64.apk dist/*.snap \
+                   dist/thc-0.3.1-r0-alpine-x86_64.apk dist/*.snap dist/thc-0.3.1-windows-x86_64.exe \
                    dist/thc-inspect-*; do
             [ -f "$f" ] && cp "$f" downloads/
           done
