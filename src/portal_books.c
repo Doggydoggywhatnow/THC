@@ -191,6 +191,12 @@ static bool book_card(App *a, SDL_FRect r, const Book *b)
     Uint32 id = ui_idp("book", b->node);
     SDL_FRect c = { r.x, r.y, r.w, r.w * 1.5f };
     UiItemState st = ui_item(ui, id, c);
+    if (st.context) {
+        float cx, cy;
+        ctx_pos(ui, c, &cx, &cy);
+        if (b->node->dir) queue_menu_dir(a, cx, cy, ROOT_BOOKS, b->node);
+        else queue_menu_item(a, cx, cy, ROOT_BOOKS, b->node);
+    }
     if (!ui_visible(ui, r)) return st.activated;
     float lift = ui_anim_id(ui, id, (st.hover || st.focused) ? 1.0f : 0.0f, 14);
     SDL_FRect cc = { c.x - lift * dp(ui, 3), c.y - lift * dp(ui, 6), c.w + lift * dp(ui, 6), c.h + lift * dp(ui, 6) };
@@ -296,6 +302,13 @@ static void book_page(App *a, const Book *b, float x, float *py, float w)
     if (st.started && ui_button(ui, ui_id("book-restart"), (SDL_FRect){ bx, ty, dp(ui, 150), dp(ui, 48) }, "Start over",
                                 ICON_REWIND, false))
         play_book(a, b, 0, true);
+    {
+        float ax = bx + (st.started ? dp(ui, 162) : 0);
+        if (ui_button(ui, ui_id("book-add"), (SDL_FRect){ ax, ty, dp(ui, 190), dp(ui, 48) }, "Add to queue", ICON_QUEUE, false)) {
+            if (b->node->dir) queue_add_dir(a, ROOT_BOOKS, b->node, false);
+            else queue_add_file(a, ROOT_BOOKS, b->node, false);
+        }
+    }
     *py += SDL_max(cr.h, ty + dp(ui, 48) - *py) + dp(ui, 32);
 
     draw_heading(a, x, *py, b->nfiles > 1 ? "Parts" : "File", NULL);
@@ -307,6 +320,11 @@ static void book_page(App *a, const Book *b, float x, float *py, float w)
         Uint32 id = ui_idp("bfile", f);
         UiItemState s = ui_item(ui, id, r);
         if (s.focused || s.hover) { a->focus_file = f; a->focus_root = ROOT_BOOKS; }
+        if (s.context) {
+            float cx, cy;
+            ctx_pos(ui, r, &cx, &cy);
+            queue_menu_item(a, cx, cy, ROOT_BOOKS, f);
+        }
         bool cur = music_is_current(a, f);
         if (ui_visible(ui, r)) {
             float hv = ui_anim_id(ui, id, (s.hover || s.focused) ? 1.0f : 0.0f, 16);

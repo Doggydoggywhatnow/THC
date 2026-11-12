@@ -5,8 +5,8 @@
 
 #include <string.h>
 
-enum { CAT_LIBRARY = 0, CAT_PLAYBACK, CAT_APPEARANCE, CAT_ACCESS, CAT_HOTKEYS, CAT_MPV, CAT_PRIVACY, CAT_COUNT };
-static const char *const k_cat_names[CAT_COUNT] = { "Library", "Playback", "Appearance", "Accessibility",
+enum { CAT_LIBRARY = 0, CAT_PLAYBACK, CAT_APPEARANCE, CAT_ACCESS, CAT_QUEUE, CAT_SYSTEM, CAT_HOTKEYS, CAT_MPV, CAT_PRIVACY, CAT_COUNT };
+static const char *const k_cat_names[CAT_COUNT] = { "Library", "Playback", "Appearance", "Accessibility", "Queue", "System",
                                                     "Hotkeys", "MPV", "Privacy" };
 
 static int g_cat;
@@ -350,6 +350,64 @@ static void page_access(App *a, Layout *L)
     note(a, L, ICON_INFO,
          "Subtitle font, size, color and background are set through MPV (sub-font, sub-font-size, sub-color, "
          "sub-back-color in mpv.conf). See the MPV page for THC's own MPV folder.");
+}
+
+
+/* A row of one on/off setting; saves when it changes. */
+static void tog(App *a, Layout *L, const char *id, const char *label, const char *hint, bool *v)
+{
+    if (ui_toggle(&a->ui, ui_id(id), next_row(a, L, dp(&a->ui, 72)), label, hint, v)) app_save_settings(a);
+}
+
+/* A choice setting stored as an int; saves when it changes. */
+static void choice(App *a, Layout *L, const char *id, const char *label, const char *const *opts, int n, int *v)
+{
+    if (ui_segmented(&a->ui, ui_id(id), next_row(a, L, 0), label, opts, n, v)) app_save_settings(a);
+}
+
+static void page_queue(App *a, Layout *L)
+{
+    Settings *s = &a->set;
+    group(a, L, "Adding", "Right-click anything, press A on it, or use the Add to queue buttons. Items go to the end by default.");
+    static const char *const addpos[] = { "End", "Next" };
+    static const char *const target[] = { "Home queue", "Active queue" };
+    choice(a, L, "set-q-addpos", "Add at", addpos, 2, &s->queue_add_position);
+    choice(a, L, "set-q-target", "Add to", target, 2, &s->queue_add_target);
+    tog(a, L, "set-q-unwatched", "Add unwatched episodes only", "When adding a season or a show", &s->queue_season_unwatched_only);
+
+    group(a, L, "Playing", NULL);
+    tog(a, L, "set-q-auto", "Play the next video automatically", "When a video ends in the video queue", &s->queue_auto_advance_video);
+    tog(a, L, "set-q-count", "Wait 5 seconds before the next video", "Press Next to skip the wait", &s->queue_next_countdown);
+    tog(a, L, "set-q-prev", "Previous restarts the item first", "After 3 seconds in, Previous restarts; before that it goes back", &s->queue_prev_restarts);
+    static const char *const rep[] = { "Off", "One", "All" };
+    choice(a, L, "set-q-repeat", "Repeat", rep, 3, &s->queue_repeat);
+    tog(a, L, "set-q-shuffle", "Shuffle", "Mixes only what is still to play", &s->queue_shuffle);
+    player_queue(QUEUE_MUSIC)->repeat = player_queue(QUEUE_VIDEO)->repeat = s->queue_repeat;
+    player_queue(QUEUE_MUSIC)->shuffle = player_queue(QUEUE_VIDEO)->shuffle = s->queue_shuffle;
+
+    group(a, L, "Resume", "Where queued items start, from your history.");
+    tog(a, L, "set-q-rv", "Resume videos", NULL, &s->queue_resume_video);
+    tog(a, L, "set-q-rs", "Resume songs", "Only songs longer than the limit in Playback", &s->queue_resume_song);
+    tog(a, L, "set-q-rb", "Resume audiobooks", NULL, &s->queue_resume_book);
+
+    group(a, L, "Two queues", "Music and audiobooks use the music queue; videos use the video queue. Either can hold any type.");
+    static const char *const chain[] = { "Stop", "Play the other queue" };
+    choice(a, L, "set-q-cm", "When the music queue ends", chain, 2, &s->queue_chain_music);
+    choice(a, L, "set-q-cv", "When the video queue ends", chain, 2, &s->queue_chain_video);
+    static const char *const vim[] = { "Window", "Listen only", "Skip" };
+    choice(a, L, "set-q-vim", "A video in the music queue", vim, 3, &s->queue_video_in_music);
+    tog(a, L, "set-q-pause", "Pause music when a video starts", NULL, &s->queue_pause_music_on_video);
+    tog(a, L, "set-q-resume", "Resume the music after the video", NULL, &s->queue_resume_music_after_video);
+
+    group(a, L, "Saving", "The upcoming queue is never saved. The backlog is what you already played.");
+    tog(a, L, "set-q-backlog", "Keep the queue backlog between sessions", "Only for portals that have history turned on", &s->queue_keep_backlog);
+    tog(a, L, "set-q-rel", "Export playlists with relative paths", "Paths relative to your library folders", &s->queue_export_relative);
+}
+
+static void page_system(App *a, Layout *L)
+{
+    (void)a;
+    group(a, L, "System", "How THC fits in with the rest of your computer. More options arrive with each feature.");
 }
 
 static void page_hotkeys(App *a, Layout *L)
@@ -894,6 +952,8 @@ void screen_settings(App *a, SDL_FRect area)
     case CAT_PLAYBACK: page_playback(a, &L); break;
     case CAT_APPEARANCE: page_appearance(a, &L); break;
     case CAT_ACCESS: page_access(a, &L); break;
+    case CAT_QUEUE: page_queue(a, &L); break;
+    case CAT_SYSTEM: page_system(a, &L); break;
     case CAT_HOTKEYS: page_hotkeys(a, &L); break;
     case CAT_MPV: page_mpv(a, &L); break;
     default: page_privacy(a, &L); break;

@@ -165,6 +165,7 @@ if(THC_BUILD_APP)
     src/tagcache.c
     src/thumbgen.c
     src/thumbs.c
+    src/screen_queue.c
     src/screen_settings.c
     src/screen_setup.c
     src/third_party.c

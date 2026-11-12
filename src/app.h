@@ -88,6 +88,8 @@ typedef struct App {
     int dlg_target;                /* which setting to fill */
     bool dlg_ready;
 
+    bool queue_open;               /* the queue panel is showing */
+
     /* a modal confirmation window (clear history, clear queue) */
     struct { bool open, fresh; int action, arg; char title[96], body[320], yes[48]; } confirm;
 
@@ -148,6 +150,31 @@ bool music_is_current(App *a, const FsNode *track);
 /* Playable files of a folder in play order: by disc and track number from their tags when
  * every file has one, else by file name. Returns the count. */
 int music_tracks(const App *a, int root, const FsNode *dir, const FsNode **out, int max);
+
+/* Where to open a context menu for an item: the mouse, or the item's middle when using the keyboard. */
+static inline void ctx_pos(const Ui *ui, SDL_FRect r, float *x, float *y)
+{
+    if (ui->keyboard_mode) { *x = r.x + r.w / 2; *y = r.y + r.h / 2; }
+    else { *x = ui->mx; *y = ui->my; }
+}
+
+/* screen_queue.c: the queue panel, the right-click menu, adding, export/import, backlog */
+float queue_panel_width(App *a);
+void queue_panel(App *a, SDL_FRect rect);
+void queue_menu_draw(App *a);
+bool queue_menu_open(void);
+void queue_menu_close(void);
+void queue_menu_item(App *a, float x, float y, int root, const FsNode *f);
+void queue_menu_dir(App *a, float x, float y, int root, const FsNode *dir);
+void queue_menu_show(App *a, float x, float y, const char *show_key, int season);
+bool queue_hotkey(App *a, Action act);
+void queue_add_dir(App *a, int root, const FsNode *dir, bool next);
+void queue_add_show(App *a, const char *show_key, int season, bool unwatched_only);
+void queue_add_file(App *a, int root, const FsNode *f, bool next);
+void queue_poll(App *a);
+void queue_backlog_save(App *a);
+void queue_backlog_restore(App *a);
+void portal_video_open_show(App *a, const char *show_key);
 
 /* screen_settings.c */
 bool settings_capture_key(App *a, const SDL_KeyboardEvent *k);

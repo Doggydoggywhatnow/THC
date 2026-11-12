@@ -112,6 +112,15 @@ static const Show *show_by_key(App *a, const char *key)
     return NULL;
 }
 
+void portal_video_open_show(App *a, const char *show_key)
+{
+    const Show *sh = show_by_key(a, show_key);
+    if (!sh) return;
+    app_go(a, SCREEN_VIDEO);
+    nav_reset(&a->vnav);
+    open_show(a, sh, -1);
+}
+
 /* ------------------------------------------------------------------------ */
 /* Cards                                                                      */
 /* ------------------------------------------------------------------------ */
@@ -134,6 +143,12 @@ static bool poster_card(App *a, SDL_FRect r, const Entry *en)
     SDL_FRect poster = { r.x, r.y, r.w, ph };
     UiItemState st = ui_item(ui, id, poster);
     if (en->movie) mark_focus(a, en->movie->file, en->movie->root, st);
+    if (st.context) {
+        float cx, cy;
+        ctx_pos(ui, poster, &cx, &cy);
+        if (en->movie) queue_menu_item(a, cx, cy, en->movie->root, en->movie->file);
+        else queue_menu_show(a, cx, cy, en->show->key, -1);
+    }
     if (!ui_visible(ui, (SDL_FRect){ r.x - dp(ui, 10), r.y - dp(ui, 10), r.w + dp(ui, 20), r.h + dp(ui, 20) }))
         return st.activated;
     float lift = ui_anim_id(ui, id, (st.hover || st.focused) ? 1.0f : 0.0f, 14);
@@ -209,6 +224,11 @@ static bool wide_card(App *a, SDL_FRect r, Uint32 id, const char *cover_title, c
     SDL_FRect card = { r.x, r.y, r.w, ch };
     UiItemState st = ui_item(ui, id, card);
     mark_focus(a, file, root, st);
+    if (st.context && file) {
+        float cx, cy;
+        ctx_pos(ui, card, &cx, &cy);
+        queue_menu_item(a, cx, cy, root, file);
+    }
     if (!ui_visible(ui, (SDL_FRect){ r.x - dp(ui, 10), r.y - dp(ui, 10), r.w + dp(ui, 20), r.h + dp(ui, 20) }))
         return st.activated;
     float lift = ui_anim_id(ui, id, (st.hover || st.focused) ? 1.0f : 0.0f, 14);
@@ -636,6 +656,11 @@ static bool episode_row(App *a, SDL_FRect r, const Show *sh, const Season *se, c
     Uint32 id = ui_idp("ep", ep->file);
     UiItemState st = ui_item(ui, id, r);
     mark_focus(a, ep->file, sh->root, st);
+    if (st.context) {
+        float cx, cy;
+        ctx_pos(ui, r, &cx, &cy);
+        queue_menu_item(a, cx, cy, sh->root, ep->file);
+    }
     if (!ui_visible(ui, r)) return st.activated;
     float hv = ui_anim_id(ui, id, (st.hover || st.focused) ? 1.0f : 0.0f, 16);
     ui_fill(ui, r, color_mix(t->surface, t->surface_hi, hv), dp(ui, 14));
@@ -770,6 +795,12 @@ static void show_page(App *a, const Show *sh, float x, float *py, float w)
             app_play_video(a, sh->root, ss.next->file);
         bx += bw + dp(ui, 12);
     }
+    {
+        float aw = dp(ui, 190);
+        if (ui_button(ui, ui_id("show-add"), (SDL_FRect){ bx, ty, aw, dp(ui, 48) }, "Add to queue", ICON_QUEUE, false))
+            queue_add_show(a, sh->key, -1, false);
+        bx += aw + dp(ui, 12);
+    }
     /* Move to another section: presentation only, folders stay put. */
     char sec[64];
     SDL_snprintf(sec, sizeof sec, "In %s", k_section_names[sh->section]);
@@ -811,6 +842,13 @@ static void show_page(App *a, const Show *sh, float x, float *py, float w)
     char note[64];
     SDL_snprintf(note, sizeof note, "%d episode%s \xC2\xB7 %d watched", se->neps, se->neps == 1 ? "" : "s", sw);
     draw_heading(a, x, *py, se->name, note);
+    {
+        const char *al = "Add season";
+        float aw2 = ui_text_w(ui, FONT_BOLD, TS_BODY, al) + dp(ui, 36);
+        float mw0 = ui_text_w(ui, FONT_BOLD, TS_BODY, sw == se->neps ? "Mark unwatched" : "Mark season watched") + dp(ui, 36);
+        SDL_FRect ar = { x + w - mw0 - dp(ui, 10) - aw2, *py - dp(ui, 4), aw2, dp(ui, 36) };
+        if (ui_pill(ui, ui_id("season-add"), ar, al, false)) queue_add_show(a, sh->key, *season, false);
+    }
     const char *lbl = sw == se->neps ? "Mark unwatched" : "Mark season watched";
     float mw = ui_text_w(ui, FONT_BOLD, TS_BODY, lbl) + dp(ui, 36);
     if (ui_pill(ui, ui_id("season-mark"), (SDL_FRect){ x + w - mw, *py - dp(ui, 4), mw, dp(ui, 36) }, lbl, false))
@@ -861,6 +899,11 @@ static bool file_row(App *a, SDL_FRect r, const FsNode *f, int root)
     Uint32 id = ui_idp("vfile", f);
     UiItemState st = ui_item(ui, id, r);
     mark_focus(a, f, root, st);
+    if (st.context) {
+        float cx, cy;
+        ctx_pos(ui, r, &cx, &cy);
+        queue_menu_item(a, cx, cy, root, f);
+    }
     if (!ui_visible(ui, r)) return st.activated;
     float hv = ui_anim_id(ui, id, (st.hover || st.focused) ? 1.0f : 0.0f, 16);
     ui_fill(ui, r, color_mix(t->surface, t->surface_hi, hv), dp(ui, 12));

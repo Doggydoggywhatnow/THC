@@ -81,6 +81,23 @@ void chrome_topbar(App *a)
 
     /* right side: scan status */
     float rx = ui->w - dp(ui, 28);
+    /* the queue button, with the number of items waiting */
+    {
+        float bs = dp(ui, 44);
+        SDL_FRect qb = { rx - bs, (h - bs) / 2, bs, bs };
+        if (a->queue_open) ui_fill(ui, qb, t->surface_hi, bs / 2);
+        if (ui_icon_button(ui, ui_id("queue-btn"), qb, ICON_QUEUE, "Queue")) a->queue_open = !a->queue_open;
+        int waiting = player_queue(QUEUE_MUSIC)->n + player_queue(QUEUE_VIDEO)->n;
+        if (waiting > 0) {
+            char nb[16];
+            SDL_snprintf(nb, sizeof nb, "%d", waiting > 99 ? 99 : waiting);
+            float bw = SDL_max(dp(ui, 18), ui_text_w(ui, FONT_BOLD, TS_SMALL, nb) + dp(ui, 10));
+            SDL_FRect badge = { qb.x + qb.w - bw + dp(ui, 2), qb.y, bw, dp(ui, 18) };
+            ui_fill(ui, badge, t->accent, badge.h / 2);
+            ui_text_center(ui, FONT_BOLD, TS_SMALL, badge, t->on_accent, nb, true);
+        }
+        rx -= bs + dp(ui, 12);
+    }
     if (a->scanning) {
         const char *msg = "Scanning library";
         float tw = ui_text_w(ui, FONT_REGULAR, TS_SMALL, msg);

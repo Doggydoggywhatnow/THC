@@ -652,6 +652,10 @@ void music_init(App *a)
     (void)a;
     queue_init(&Q[QUEUE_MUSIC], QUEUE_MUSIC);
     queue_init(&Q[QUEUE_VIDEO], QUEUE_VIDEO);
+    for (int i = 0; i < QUEUE_COUNT; i++) {
+        Q[i].repeat = a->set.queue_repeat;
+        Q[i].shuffle = a->set.queue_shuffle;
+    }
     P.seek_preview = -1;
     P.last_tick = SDL_GetTicks() / 1000.0;
 }

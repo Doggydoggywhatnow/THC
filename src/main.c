@@ -324,6 +324,7 @@ static bool handle_hotkey(App *a, const SDL_KeyboardEvent *k)
         }
         default:
             if (music_hotkey(a, (Action)i)) return true;
+            if (queue_hotkey(a, (Action)i)) return true;
             break;
         }
     }
@@ -349,7 +350,7 @@ static void frame(App *a)
 {
     Ui *ui = &a->ui;
     ui->th = theme_make(portal_of(a->screen), a->dark, a->set.high_contrast, a->set.accent);
-    ui->modal_layer = a->confirm.open ? UI_MODAL_LAYER : 0;
+    ui->modal_layer = (a->confirm.open || queue_menu_open()) ? UI_MODAL_LAYER : 0;
     ui_begin(ui);
     a->focus_file = NULL;
     art_frame(a);
@@ -362,7 +363,8 @@ static void frame(App *a)
     } else {
         float top = dp(ui, TOPBAR_DP);
         float bottom = music_bar_height(a);
-        SDL_FRect area = { 0, top, (float)ui->w, ui->h - top - bottom };
+        float panel = queue_panel_width(a);
+        SDL_FRect area = { 0, top, (float)ui->w - panel, ui->h - top - bottom };
         switch (a->screen) {
         case SCREEN_VIDEO: portal_video(a, area); break;
         case SCREEN_MUSIC: portal_music(a, area); break;
@@ -371,10 +373,12 @@ static void frame(App *a)
         default: break;
         }
         chrome_topbar(a);
+        if (panel > 0) queue_panel(a, (SDL_FRect){ ui->w - panel, top, panel, ui->h - top - bottom });
         music_bar(a);
         video_pill(a);
     }
     chrome_toast(a);
+    queue_menu_draw(a);
     if (a->confirm.open) {
         int r = ui_confirm_dialog(ui, a->confirm.title, a->confirm.body, a->confirm.yes, "Cancel", a->confirm.fresh);
         a->confirm.fresh = false;
@@ -402,6 +406,7 @@ static void debug_script(App *a, Uint64 frame_no)
     static Uint64 next = 20;
     static bool pending_click;
     static float click_x, click_y;
+    static int click_button = SDL_BUTTON_LEFT;
     if (!init) {
         init = true;
         keys = SDL_getenv("THC_KEYS");
@@ -415,7 +420,7 @@ static void debug_script(App *a, Uint64 frame_no)
         SDL_zero(ev);
         pending_click = false;
         ev.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
-        ev.button.button = SDL_BUTTON_LEFT;
+        ev.button.button = (Uint8)click_button;
         ev.button.x = click_x;
         ev.button.y = click_y;
         ev.button.down = true;
@@ -437,9 +442,10 @@ static void debug_script(App *a, Uint64 frame_no)
             next = frame_no + 60;
             return;
         }
-        if (!SDL_strncmp(name, "click:", 6)) {
+        if (!SDL_strncmp(name, "click:", 6) || !SDL_strncmp(name, "rclick:", 7)) {
             float x = 0, y = 0;
-            SDL_sscanf(name + 6, "%f:%f", &x, &y);
+            click_button = name[0] == 'r' ? SDL_BUTTON_RIGHT : SDL_BUTTON_LEFT;
+            SDL_sscanf(name + (name[0] == 'r' ? 7 : 6), "%f:%f", &x, &y);
             ev.type = SDL_EVENT_MOUSE_MOTION;
             ev.motion.x = x;
             ev.motion.y = y;
@@ -502,6 +508,11 @@ static void handle_event(App *a, SDL_Event *ev)
         if (a->confirm.open) {
             if (k == SDLK_ESCAPE) a->confirm.open = false;
             return;
+        }
+        if (queue_menu_open()) {
+            if (k == SDLK_ESCAPE || k == SDLK_BACKSPACE) queue_menu_close();
+            else if (k != SDLK_RETURN && k != SDLK_UP && k != SDLK_DOWN && k != SDLK_TAB) return;
+            if (k == SDLK_ESCAPE || k == SDLK_BACKSPACE) return;
         }
         if (ui->text_active) {
             if (k == SDLK_ESCAPE) ui->focus = 0;
@@ -588,9 +599,12 @@ int main(int argc, char **argv)
         }
         while (SDL_PollEvent(&ev)) handle_event(a, &ev);
         poll_dialog(a);
+        queue_poll(a);
         if (scan_poll(a)) {
             a->focus_file = NULL;
             app_rebuild_library(a);
+            static bool restored;
+            if (!restored) { restored = true; queue_backlog_restore(a); }
             tagcache_start(a);
             app_history_changed();
         }

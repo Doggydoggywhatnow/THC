@@ -57,6 +57,11 @@ static bool cover_card(App *a, SDL_FRect r, const FsNode *n, bool round, const c
     Uint32 id = ui_idp("mcard", n);
     SDL_FRect cover = { r.x, r.y, r.w, r.w };
     UiItemState st = ui_item(ui, id, cover);
+    if (st.context) {
+        float cx, cy;
+        ctx_pos(ui, cover, &cx, &cy);
+        queue_menu_dir(a, cx, cy, ROOT_MUSIC, n);
+    }
     if (!ui_visible(ui, r)) return st.activated;
     float lift = ui_anim_id(ui, id, (st.hover || st.focused) ? 1.0f : 0.0f, 14);
     float rad = round ? r.w / 2 : dp(ui, 12);
@@ -139,6 +144,12 @@ static float track_list(App *a, const FsNode *dir, float x, float y, float w)
         SDL_FRect r = { x, y, w, rh };
         Uint32 id = ui_idp("track", k);
         UiItemState st = ui_item(ui, id, r);
+        if (st.focused || st.hover) { a->focus_file = k; a->focus_root = ROOT_MUSIC; }
+        if (st.context) {
+            float cx, cy;
+            ctx_pos(ui, r, &cx, &cy);
+            queue_menu_item(a, cx, cy, ROOT_MUSIC, k);
+        }
         bool cur = music_is_current(a, k);
         if (ui_visible(ui, r)) {
             float hv = ui_anim_id(ui, id, (st.hover || st.focused) ? 1.0f : 0.0f, 16);
@@ -307,6 +318,8 @@ void portal_music(App *a, SDL_FRect area)
         if (tracks_here) {
             if (ui_button(ui, ui_id("album-play"), (SDL_FRect){ tx, ty, dp(ui, 150), dp(ui, 46) }, "Play", ICON_PLAY, true))
                 music_play_folder(a, ROOT_MUSIC, dir, 0);
+            if (ui_button(ui, ui_id("album-add"), (SDL_FRect){ tx + dp(ui, 162), ty, dp(ui, 190), dp(ui, 46) }, "Add to queue", ICON_QUEUE, false))
+                queue_add_dir(a, ROOT_MUSIC, dir, false);
             ty += dp(ui, 46) + dp(ui, 20);
             ty += track_list(a, dir, tx, ty, tw);
         }

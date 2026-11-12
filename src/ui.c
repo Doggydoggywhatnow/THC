@@ -443,6 +443,8 @@ bool ui_event(Ui *ui, SDL_Event *ev)
         if (ev->button.button == SDL_BUTTON_LEFT) {
             ui->mouse_down = true;
             ui->mouse_pressed = true;
+        } else if (ev->button.button == SDL_BUTTON_RIGHT) {
+            ui->right_pressed = true;
         } else if (ev->button.button == SDL_BUTTON_X1) {
             ui->key_back = true;
         }
@@ -485,6 +487,17 @@ bool ui_event(Ui *ui, SDL_Event *ev)
             ui->text_enter = true;
             ui->keyboard_mode = true;
             return true;
+        case SDLK_APPLICATION:
+            ui->key_context = true;
+            ui->keyboard_mode = true;
+            return true;
+        case SDLK_F10:
+            if (shift) {
+                ui->key_context = true;
+                ui->keyboard_mode = true;
+                return true;
+            }
+            break;
         case SDLK_BACKSPACE:
             ui->text_backspace++;
             return false; /* also "back" unless a text field takes it */
@@ -631,7 +644,7 @@ void ui_end(Ui *ui)
     ui->mouse_pressed = ui->mouse_released = ui->mouse_moved = false;
     ui->wheel_x = ui->wheel_y = 0;
     ui->nav = NAV_NONE;
-    ui->key_activate = ui->key_back = false;
+    ui->key_activate = ui->key_back = ui->right_pressed = ui->key_context = false;
     ui->text_in[0] = 0;
     ui->text_backspace = 0;
     ui->text_enter = false;
@@ -812,6 +825,11 @@ UiItemState ui_item(Ui *ui, Uint32 id, SDL_FRect r)
     st.pressed = ui->pressed_id == id && ui->mouse_down;
     if (ui->pressed_id == id && ui->mouse_released && inside) st.activated = true;
     st.focused = ui->focus == id;
+    if (ui->right_pressed && st.hover) st.context = true;
+    if (st.focused && ui->key_context) {
+        st.context = true;
+        ui->key_context = false;
+    }
     if (st.focused && ui->key_activate) {
         st.activated = true;
         ui->key_activate = false;
@@ -1451,6 +1469,52 @@ void ui_icon(Ui *ui, UiIcon icon, SDL_FRect b, Color c)
     case ICON_CLOSE:
         ui_line(ui, X(0.22f), Y(0.22f), X(0.78f), Y(0.78f), w * 1.3f, c);
         ui_line(ui, X(0.78f), Y(0.22f), X(0.22f), Y(0.78f), w * 1.3f, c);
+        break;
+    case ICON_QUEUE:
+        ui_line(ui, X(0.14f), Y(0.26f), X(0.62f), Y(0.26f), w, c);
+        ui_line(ui, X(0.14f), Y(0.48f), X(0.62f), Y(0.48f), w, c);
+        ui_line(ui, X(0.14f), Y(0.70f), X(0.46f), Y(0.70f), w, c);
+        ui_tri(ui, X(0.68f), Y(0.50f), X(0.68f), Y(0.86f), X(0.92f), Y(0.68f), c);
+        break;
+    case ICON_SHUFFLE: {
+        float a[] = { X(0.12f), Y(0.30f), X(0.40f), Y(0.30f), X(0.60f), Y(0.70f), X(0.80f), Y(0.70f) };
+        float b[] = { X(0.12f), Y(0.70f), X(0.40f), Y(0.70f), X(0.60f), Y(0.30f), X(0.80f), Y(0.30f) };
+        polyline(ui, a, 4, w, c);
+        polyline(ui, b, 4, w, c);
+        ui_tri(ui, X(0.78f), Y(0.18f), X(0.78f), Y(0.42f), X(0.94f), Y(0.30f), c);
+        ui_tri(ui, X(0.78f), Y(0.58f), X(0.78f), Y(0.82f), X(0.94f), Y(0.70f), c);
+        break;
+    }
+    case ICON_REPEAT:
+    case ICON_REPEAT_ONE: {
+        float a[] = { X(0.80f), Y(0.40f), X(0.80f), Y(0.28f), X(0.20f), Y(0.28f), X(0.20f), Y(0.48f) };
+        float b[] = { X(0.20f), Y(0.60f), X(0.20f), Y(0.72f), X(0.80f), Y(0.72f), X(0.80f), Y(0.52f) };
+        polyline(ui, a, 4, w, c);
+        polyline(ui, b, 4, w, c);
+        ui_tri(ui, X(0.68f), Y(0.12f), X(0.68f), Y(0.44f), X(0.92f), Y(0.28f), c);
+        ui_tri(ui, X(0.32f), Y(0.56f), X(0.32f), Y(0.88f), X(0.08f), Y(0.72f), c);
+        if (icon == ICON_REPEAT_ONE) {
+            ui_circle(ui, X(0.50f), Y(0.50f), s * 0.17f, c);
+            ui_line(ui, X(0.50f), Y(0.42f), X(0.50f), Y(0.58f), w * 0.8f, rgba(0, 255));
+        }
+        break;
+    }
+    case ICON_UP: {
+        float p[] = { X(0.24f), Y(0.62f), X(0.50f), Y(0.34f), X(0.76f), Y(0.62f) };
+        polyline(ui, p, 3, s * 0.11f, c);
+        break;
+    }
+    case ICON_DOWN: {
+        float p[] = { X(0.24f), Y(0.38f), X(0.50f), Y(0.66f), X(0.76f), Y(0.38f) };
+        polyline(ui, p, 3, s * 0.11f, c);
+        break;
+    }
+    case ICON_GRIP:
+        for (int r = 0; r < 3; r++)
+            for (int k = 0; k < 2; k++) ui_circle(ui, X(0.38f + k * 0.24f), Y(0.26f + r * 0.24f), s * 0.05f, c);
+        break;
+    case ICON_MORE:
+        for (int k = 0; k < 3; k++) ui_circle(ui, X(0.50f), Y(0.24f + k * 0.26f), s * 0.07f, c);
         break;
     case ICON_SORT:
         ui_line(ui, X(0.16f), Y(0.28f), X(0.84f), Y(0.28f), w, c);

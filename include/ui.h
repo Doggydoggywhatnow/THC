@@ -53,6 +53,7 @@ typedef struct UiItemState {
     bool focused;    /* has keyboard focus */
     bool activated;  /* clicked, or Enter pressed while focused */
     bool pressed;    /* mouse button held on it */
+    bool context;    /* right-clicked, or the Menu key / Shift+F10 while focused */
 } UiItemState;
 
 typedef struct UiRegion {
@@ -96,6 +97,8 @@ typedef struct Ui {
     float wheel_x, wheel_y;
     int nav;
     bool key_activate;
+    bool right_pressed;      /* right button went down this frame (at mx, my) */
+    bool key_context;        /* Menu key or Shift+F10 */
     bool key_back;
     bool keyboard_mode;      /* last input was keyboard: show the focus ring */
     char text_in[64];        /* SDL text input this frame */
@@ -198,7 +201,7 @@ typedef enum UiIcon {
     ICON_NOTE, ICON_BOOK, ICON_FOLDER, ICON_BACK, ICON_CHEVRON_RIGHT, ICON_CLOCK,
     ICON_VOLUME, ICON_REWIND, ICON_FORWARD, ICON_TV, ICON_STAR, ICON_SPARK, ICON_MOON,
     ICON_SUN, ICON_KEYBOARD, ICON_EYE, ICON_SHIELD, ICON_INFO, ICON_PLUS, ICON_CLOSE,
-    ICON_SORT
+    ICON_SORT, ICON_QUEUE, ICON_SHUFFLE, ICON_REPEAT, ICON_REPEAT_ONE, ICON_UP, ICON_DOWN, ICON_GRIP, ICON_MORE
 } UiIcon;
 void ui_icon(Ui *ui, UiIcon icon, SDL_FRect box, Color c);
 
