@@ -749,3 +749,28 @@ int tags_order(const TagInfo *a, const TagInfo *b)
     if (a->track != b->track) return a->track < b->track ? -1 : 1;
     return 0;
 }
+
+static int sort_key_disc(const TagInfo *t) { return t->disc > 0 ? t->disc : 1; }
+
+/* true if i must come after j */
+static bool sorts_after(const TagInfo *a, const TagInfo *b)
+{
+    bool ta = a && a->track > 0, tb = b && b->track > 0;
+    if (ta != tb) return !ta;            /* untagged files go last */
+    if (!ta) return false;               /* both untagged: keep file-name order */
+    if (sort_key_disc(a) != sort_key_disc(b)) return sort_key_disc(a) > sort_key_disc(b);
+    return a->track > b->track;
+}
+
+void tags_sort_order(const TagInfo *const *tags, int n, int *order)
+{
+    for (int i = 0; i < n; i++) order[i] = i;
+    for (int i = 1; i < n; i++) {        /* stable insertion sort */
+        int v = order[i], j = i - 1;
+        while (j >= 0 && sorts_after(tags[order[j]], tags[v])) {
+            order[j + 1] = order[j];
+            j--;
+        }
+        order[j + 1] = v;
+    }
+}

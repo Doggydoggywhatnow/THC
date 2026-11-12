@@ -41,4 +41,9 @@ unsigned char *tags_read_art(const char *path, size_t *len, char *mime, size_t m
 /* Heuristic: does this tag set order its files by track number? */
 int tags_order(const TagInfo *a, const TagInfo *b); /* disc, then track */
 
+/* Play order of a folder's files (#20). `tags[i]` may be NULL. Files with a track number come first,
+ * by disc and then track (ties keep the input order); files without one follow in input order,
+ * which is the file-name order. `order` receives the n indices. */
+void tags_sort_order(const TagInfo *const *tags, int n, int *order);
+
 #endif

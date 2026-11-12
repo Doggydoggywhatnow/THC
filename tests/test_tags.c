@@ -435,5 +435,44 @@ int main(void)
     test_wav();
     test_bad_input();
     test_read_only_and_order();
+    /* #20: play order with untagged files */
+    {
+        TagInfo t1 = { .track = 3 }, t2 = { .track = 2 }, t3 = { .track = 1 }, t4 = { .track = 4 };
+        TagInfo d2a = { .disc = 2, .track = 1 }, d1a = { .disc = 1, .track = 2 }, d1b = { .disc = 1, .track = 1 };
+        TagInfo dup1 = { .track = 5 }, dup2 = { .track = 5 };
+        int o[16];
+        /* the issue's folder: tracks 3, 2, 1, 4 and two untagged (one NULL = unreadable) in name order */
+        const TagInfo *a[] = { &t1, NULL, &t2, &t3, NULL, &t4 };
+        tags_sort_order(a, 6, o);
+        int want[] = { 3, 2, 0, 5, 1, 4 };           /* 1, 2, 3, 4, then the untagged ones by file name */
+        for (int i = 0; i < 6; i++) CHECK(o[i] == want[i]);
+        /* an untagged TagInfo (track 0) is the same as NULL */
+        TagInfo none = { .track = 0 };
+        const TagInfo *b[] = { &none, &t2, &none };
+        tags_sort_order(b, 3, o);
+        CHECK(o[0] == 1 && o[1] == 0 && o[2] == 2);
+        /* all untagged: file-name order, unchanged */
+        const TagInfo *c[] = { NULL, &none, NULL, &none };
+        tags_sort_order(c, 4, o);
+        for (int i = 0; i < 4; i++) CHECK(o[i] == i);
+        /* multi-disc: disc first, then track */
+        const TagInfo *d[] = { &d2a, &d1a, &d1b };
+        tags_sort_order(d, 3, o);
+        CHECK(o[0] == 2 && o[1] == 1 && o[2] == 0);
+        /* duplicate track numbers keep their input order (stable) */
+        const TagInfo *e[] = { &dup1, &t3, &dup2 };
+        tags_sort_order(e, 3, o);
+        CHECK(o[0] == 1 && o[1] == 0 && o[2] == 2);
+        /* empty and single */
+        tags_sort_order(a, 0, o);
+        const TagInfo *one[] = { NULL };
+        tags_sort_order(one, 1, o);
+        CHECK(o[0] == 0);
+        /* a tagged file with no disc number counts as disc 1 */
+        TagInfo nodisc = { .disc = 0, .track = 1 }, disc1 = { .disc = 1, .track = 2 };
+        const TagInfo *f[] = { &disc1, &nodisc };
+        tags_sort_order(f, 2, o);
+        CHECK(o[0] == 1 && o[1] == 0);
+    }
     TEST_DONE();
 }

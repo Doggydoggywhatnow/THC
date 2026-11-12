@@ -593,27 +593,17 @@ int music_tracks(const App *a, int root, const FsNode *dir, const FsNode **out, 
     int n = 0;
     for (int i = 0; i < dir->nkids && n < max; i++)
         if (playable(dir->kids[i], books)) out[n++] = dir->kids[i];
-    if (n < 2) return n;
-    /* order by disc and track number when every file has a track number;
-     * otherwise keep the file-name order */
+    if (n < 2 || n > MAXQ) return n;
+    /* tagged tracks by disc and track, then the untagged ones by file name (#20) */
     const TagInfo *t[MAXQ];
-    for (int i = 0; i < n && i < MAXQ; i++) {
+    int order[MAXQ];
+    const FsNode *copy[MAXQ];
+    for (int i = 0; i < n; i++) {
         t[i] = tag_get(a, root, out[i]);
-        if (!t[i] || t[i]->track <= 0) return n;
+        copy[i] = out[i];
     }
-    if (n > MAXQ) return n;
-    for (int i = 1; i < n; i++) {   /* stable insertion sort */
-        const FsNode *f = out[i];
-        const TagInfo *ti = t[i];
-        int j = i - 1;
-        while (j >= 0 && tags_order(t[j], ti) > 0) {
-            out[j + 1] = out[j];
-            t[j + 1] = t[j];
-            j--;
-        }
-        out[j + 1] = f;
-        t[j + 1] = ti;
-    }
+    tags_sort_order(t, n, order);
+    for (int i = 0; i < n; i++) out[i] = copy[order[i]];
     return n;
 }
 

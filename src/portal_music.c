@@ -276,7 +276,8 @@ static float track_list(App *a, const FsNode *dir, float x, float y, float w)
                         cur ? t->accent : t->text);
             } else {
                 char num[12];
-                SDL_snprintf(num, sizeof num, "%d", tg && tg->track > 0 ? tg->track : idx + 1);
+                if (tg && tg->track > 0) SDL_snprintf(num, sizeof num, "%d", tg->track);
+                else SDL_strlcpy(num, "\xE2\x80\x93", sizeof num);   /* untagged: no made-up number (#20) */
                 ui_text_center(ui, FONT_REGULAR, TS_BODY, nb, t->text_dim, num, true);
             }
             char title[256];
