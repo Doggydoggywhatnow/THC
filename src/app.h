@@ -85,6 +85,8 @@ typedef struct App {
     /* folder picker results (dialogs call back on another thread) */
     SDL_Mutex *dlg_mutex;
     char dlg_path[THC_PATH_MAX];
+    char restore_folder[THC_PATH_MAX];   /* the backup the user chose to restore */
+    bool bk_history, bk_screens;         /* what to include in a backup / restore */
     int dlg_target;                /* which setting to fill */
     bool dlg_ready;
 
@@ -101,7 +103,9 @@ typedef struct App {
 /* main.c */
 void app_toast(App *a, const char *fmt, ...);
 void app_export_history(App *a, bool json);
-enum { CONFIRM_CLEAR_HISTORY = 1, CONFIRM_CLEAR_QUEUE };
+enum { CONFIRM_CLEAR_HISTORY = 1, CONFIRM_CLEAR_QUEUE, CONFIRM_RESTORE };
+enum { DLG_BACKUP = 100, DLG_RESTORE };   /* folder dialogs that are not a library folder */
+void app_pick_backup_folder(App *a, bool restore);
 void app_confirm(App *a, int action, int arg, const char *title, const char *body, const char *yes);
 void app_save_settings(App *a);
 void app_apply_appearance(App *a);

@@ -165,6 +165,39 @@ static bool parse_def(Settings *s, const char *k, const char *v, bool *seen_hist
     return false;
 }
 
+/* Is this a key the current THC reads? Anything else is kept as it is (settings compatibility rule). */
+static bool key_known(const char *k)
+{
+    static const char *const fixed[] = {
+        "setup_done", "music_dir", "video_dir", "books_dir", "sort_mode", "watched_threshold", "volume", "book_speed",
+        "skip_seconds", "libmpv_path", "theme", "accent", "text_scale", "ui_scale", "font_path", "high_contrast",
+        "reduced_motion", "screen_reader", "remember_history", "video_thumbs", "last_portal", NULL
+    };
+    for (int i = 0; fixed[i]; i++)
+        if (!strcmp(k, fixed[i])) return true;
+    for (int i = 0; i < NDEFS; i++)
+        if (!strcmp(k, k_defs[i].key)) return true;
+    if (!strncmp(k, "override.", 9)) return true;
+    if (!strncmp(k, "section.", 8)) {
+        for (int i = 0; i < SECTION_COUNT; i++)
+            if (!strcmp(k + 8, k_section_keys[i])) return true;
+        return false;
+    }
+    if (!strncmp(k, "hotkey.", 7)) {
+        for (int i = 0; i < ACT_COUNT; i++)
+            if (!strcmp(k + 7, k_actions[i].key)) return true;
+        return false;
+    }
+    return false;
+}
+
+static void keep_unknown(Settings *s, const char *k, const char *v)
+{
+    size_t used = strlen(s->unknown), need = strlen(k) + strlen(v) + 4;
+    if (used + need >= sizeof s->unknown) return;      /* a full buffer drops the rest, never overflows */
+    snprintf(s->unknown + used, sizeof s->unknown - used, "%s = %s\n", k, v);
+}
+
 bool settings_load(Settings *s, const char *path)
 {
     FILE *f = fopen(path, "rb");
@@ -178,6 +211,7 @@ bool settings_load(Settings *s, const char *path)
         if (!eq) continue;
         *eq = 0;
         char *k = trim(p), *v = trim(eq + 1);
+        if (!key_known(k)) { keep_unknown(s, k, v); continue; }
 
         if (!strcmp(k, "setup_done")) s->setup_done = parse_bool(v);
         else if (!strcmp(k, "music_dir")) STR(music_dir);
@@ -267,6 +301,10 @@ bool settings_save(const Settings *s, const char *path)
     for (int i = 0; i < ACT_COUNT; i++) fprintf(f, "hotkey.%s = %s\n", k_actions[i].key, s->hotkey[i]);
     fprintf(f, "\n[state]\n");
     fprintf(f, "last_portal = %d\n", s->last_portal);
+    if (s->unknown[0]) {
+        fprintf(f, "\n[kept from a newer THC]\n");
+        fputs(s->unknown, f);
+    }
     bool ok = fclose(f) == 0;
     if (!ok) return false;
     remove(path);

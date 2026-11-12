@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "app.h"
+#include "backup.h"
 #include "hotkeys.h"
 
 /* ------------------------------------------------------------------------ */
@@ -108,6 +109,15 @@ static void run_confirmed(App *a)
     case CONFIRM_CLEAR_QUEUE:
         queue_confirmed_clear(a, a->confirm.arg);
         break;
+    case CONFIRM_RESTORE: {
+        BackupOptions opt = { a->bk_history, a->bk_screens };
+        char err[256] = "";
+        if (backup_stage_restore(a->data_dir, a->restore_folder, &opt, err, sizeof err))
+            app_toast(a, "Restore ready. It is applied when THC starts next.");
+        else
+            app_toast(a, "%s", err);
+        break;
+    }
     }
 }
 
@@ -222,9 +232,50 @@ static char *folder_setting(App *a, int target)
     }
 }
 
+void app_pick_backup_folder(App *a, bool restore)
+{
+    a->dlg_target = restore ? DLG_RESTORE : DLG_BACKUP;
+    SDL_ShowOpenFolderDialog(folder_chosen, a, a->win, NULL, false);
+    app_toast(a, restore ? "Choose a THC backup folder. THC only reads it." : "Choose where to put the backup.");
+}
+
+static void backup_dialog_done(App *a)
+{
+    BackupOptions opt = { a->bk_history, a->bk_screens };
+    char err[256] = "", out[THC_PATH_MAX];
+    if (a->dlg_target == DLG_BACKUP) {
+        if (backup_create(a->data_dir, a->hist, a->dlg_path, &opt, THC_VERSION, out, sizeof out, err, sizeof err))
+            app_toast(a, "Backup saved");
+        else
+            app_toast(a, "%s", err);
+        return;
+    }
+    BackupInfo info;
+    if (!backup_inspect(a->dlg_path, THC_VERSION, &info, err, sizeof err)) {
+        app_toast(a, "%s", err);
+        return;
+    }
+    SDL_strlcpy(a->restore_folder, a->dlg_path, sizeof a->restore_folder);
+    char body[320];
+    SDL_snprintf(body, sizeof body,
+                 "Backup from THC %s: settings%s%s%s. %sYour current files are saved in a pre-restore folder first. "
+                 "The restore is applied the next time THC starts.",
+                 info.version[0] ? info.version : "(unknown)", info.has_mpv ? ", MPV setup" : "",
+                 info.has_history && a->bk_history ? ", history" : "",
+                 info.has_screenshots && a->bk_screens ? ", screenshots" : "",
+                 info.newer ? "It is from a newer THC: THC restores what it understands. " : "");
+    app_confirm(a, CONFIRM_RESTORE, 0, "Restore this backup?", body, "Restore");
+}
+
 static void poll_dialog(App *a)
 {
     SDL_LockMutex(a->dlg_mutex);
+    if (a->dlg_ready && a->dlg_target >= DLG_BACKUP) {
+        a->dlg_ready = false;
+        SDL_UnlockMutex(a->dlg_mutex);
+        backup_dialog_done(a);
+        return;
+    }
     if (a->dlg_ready) {
         char *dst = folder_setting(a, a->dlg_target);
         if (dst) SDL_strlcpy(dst, a->dlg_path, THC_PATH_MAX);
@@ -578,6 +629,11 @@ int main(int argc, char **argv)
     char *pref = SDL_GetPrefPath("THC", "THC");
     SDL_strlcpy(a->data_dir, pref ? pref : "./", sizeof a->data_dir);
     SDL_free(pref);
+    {   /* a restore chosen last time is applied now, before anything is opened */
+        char rerr[256] = "";
+        if (backup_apply_staged(a->data_dir, rerr, sizeof rerr)) SDL_Log("a restore was applied");
+        else if (rerr[0]) SDL_Log("restore: %s", rerr);
+    }
     SDL_snprintf(a->mpv_dir, sizeof a->mpv_dir, "%smpv", a->data_dir);
     SDL_CreateDirectory(a->mpv_dir);
     SDL_snprintf(a->settings_path, sizeof a->settings_path, "%ssettings.ini", a->data_dir);

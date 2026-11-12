@@ -144,6 +144,9 @@ typedef struct Settings {
 
     /* Last portal shown */
     int last_portal;
+    /* Lines THC does not recognise (written by a newer THC), kept verbatim and written back on save so a
+     * downgrade does not lose them. "key = value\n" each; never shown or edited. */
+    char unknown[8192];
 } Settings;
 
 void settings_defaults(Settings *s);

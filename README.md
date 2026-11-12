@@ -423,6 +423,10 @@ Everything lives in your OS's standard data directory:
 
 Inside it: `settings.ini` (plain text, editable while THC is closed), `history.db` (watch history), and `mpv/` (THC's own MPV configuration: `mpv.conf`, `input.conf`, `scripts/`, `shaders/`).
 
+**Same folder for every package.** The .deb, AppImage, tarball, Alpine and Void packages, a build from source, and the Windows and macOS builds all use the folder above, so switching between them keeps your settings and history. Installing, upgrading and uninstalling never touch it: none of THC's package scripts removes it (to start fresh, delete the folder yourself). The planned Snap runs confined and keeps its data in its own folder under `~/snap/`, which other packages do not share; use **Back up and restore** to move between a Snap and anything else.
+
+**Before reinstalling, back up `mpv.conf` and the `mpv/` folder**, or use **Settings, Privacy, Back up to a folder**. A backup is a plain folder with `settings.ini` and `mpv/` (and, if you tick the boxes, `history.db` and screenshots), never your media or caches. **Restore from a folder** shows what the backup holds and which THC wrote it, asks first, saves your current files into a `pre-restore/` folder, and applies the backup the next time THC starts. A backup from a newer THC restores what this THC understands. Settings that an older THC does not know are kept in `settings.ini` and written back unchanged, so going back to an older version does not lose them.
+
 ## Privacy
 
 Privacy is a core value, not a feature toggle.

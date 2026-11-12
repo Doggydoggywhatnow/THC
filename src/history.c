@@ -649,3 +649,22 @@ bool history_play_counts(double listened, double duration, int percent)
     if (percent > 100) percent = 100;
     return listened >= duration * percent / 100.0;
 }
+
+/* A consistent copy of the open database (SQLite's online backup), safe while THC is running. */
+bool history_backup_to(History *h, const char *dest_path)
+{
+    if (!h || !dest_path) return false;
+    sqlite3 *dst = NULL;
+    if (sqlite3_open(dest_path, &dst) != SQLITE_OK) {
+        if (dst) sqlite3_close(dst);
+        return false;
+    }
+    sqlite3_backup *b = sqlite3_backup_init(dst, "main", h->db, "main");
+    bool ok = false;
+    if (b) {
+        ok = sqlite3_backup_step(b, -1) == SQLITE_DONE;
+        sqlite3_backup_finish(b);
+    }
+    sqlite3_close(dst);
+    return ok;
+}

@@ -49,6 +49,9 @@ void history_close(History *h);
  * check set nothing is ever treated as moved: a moved file starts a fresh entry (#24). */
 void history_set_exists_check(History *h, bool (*exists)(void *ud, const char *rel_path), void *ud);
 
+/* Write a consistent copy of the database to `dest_path` (SQLite's backup API; safe while open). */
+bool history_backup_to(History *h, const char *dest_path);
+
 /* Look up a file. Returns false if there is no history for it. */
 bool history_get(History *h, const char *rel_path, int64_t size, HistoryEntry *out);
 

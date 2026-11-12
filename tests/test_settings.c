@@ -101,5 +101,57 @@ int main(void)
     CHECK_STR(s.hotkey[ACT_SEARCH], "/");
     CHECK_STR(s.hotkey[ACT_QUEUE_PANEL], "Q");
     remove(path);
+    /* settings compatibility: keys this THC does not know survive a load and save, in order (#26) */
+    {
+        const char *newer = "thc_test_newer.ini";
+        FILE *nf = fopen(newer, "wb");
+        CHECK(nf != NULL);
+        if (nf) {
+            fputs("# written by THC 9.9\n[library]\nvolume = 33\nfuture_flag = 1\n"
+                  "section.holograms = /media/holo\nhotkey.teleport = Ctrl+Alt+T\n"
+                  "nsfw_pin_hash = abc123\nweird key with spaces = some value = with equals\n", nf);
+            fclose(nf);
+        }
+        Settings n;
+        settings_defaults(&n);
+        CHECK(settings_load(&n, newer));
+        CHECK(n.volume == 33);                              /* known keys still apply */
+        CHECK(strstr(n.unknown, "future_flag = 1\n"));
+        CHECK(strstr(n.unknown, "section.holograms = /media/holo\n"));
+        CHECK(strstr(n.unknown, "hotkey.teleport = Ctrl+Alt+T\n"));
+        CHECK(strstr(n.unknown, "weird key with spaces = some value = with equals\n"));
+        CHECK(!strstr(n.unknown, "volume"));                /* known keys are not "unknown" */
+        n.volume = 44;                                      /* a known key changes... */
+        CHECK(settings_save(&n, newer));
+        Settings m;
+        settings_defaults(&m);
+        CHECK(settings_load(&m, newer));
+        CHECK(m.volume == 44);
+        CHECK(strcmp(m.unknown, n.unknown) == 0);           /* ...the unknown ones are untouched, same order */
+        CHECK(strstr(m.unknown, "future_flag") < strstr(m.unknown, "hotkey.teleport"));
+        CHECK(settings_save(&m, newer));                    /* a second round trip is stable */
+        Settings k;
+        settings_defaults(&k);
+        CHECK(settings_load(&k, newer));
+        CHECK(strcmp(k.unknown, n.unknown) == 0);
+        /* a file with nothing unknown writes no extra section */
+        Settings plain;
+        settings_defaults(&plain);
+        CHECK(settings_save(&plain, newer));
+        FILE *rf = fopen(newer, "rb");
+        char buf[16384] = "";
+        if (rf) { size_t got = fread(buf, 1, sizeof buf - 1, rf); buf[got] = 0; fclose(rf); }
+        CHECK(!strstr(buf, "kept from a newer THC"));
+        /* a full buffer drops the surplus instead of overflowing */
+        nf = fopen(newer, "wb");
+        if (nf) {
+            for (int i = 0; i < 2000; i++) fprintf(nf, "future_key_%d = %0100d\n", i, i);
+            fclose(nf);
+        }
+        settings_defaults(&n);
+        CHECK(settings_load(&n, newer));
+        CHECK(strlen(n.unknown) < sizeof n.unknown && strstr(n.unknown, "future_key_0 "));
+        remove(newer);
+    }
     TEST_DONE();
 }

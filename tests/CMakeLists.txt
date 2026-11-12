@@ -25,6 +25,10 @@ add_executable(test_mediakeys test_mediakeys.c)
 target_link_libraries(test_mediakeys PRIVATE thc_core)
 add_test(NAME mediakeys COMMAND test_mediakeys)
 
+add_executable(test_backup test_backup.c)
+target_link_libraries(test_backup PRIVATE thc_core)
+add_test(NAME backup COMMAND test_backup WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
 add_executable(test_ontop test_ontop.c)
 target_link_libraries(test_ontop PRIVATE thc_core)
 add_test(NAME ontop COMMAND test_ontop)

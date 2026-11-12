@@ -958,6 +958,19 @@ static void page_privacy(App *a, Layout *L)
     if (ui_button(ui, ui_id("data-open"), (SDL_FRect){ r.x + r.w - dp(ui, 164), r.y + dp(ui, 12), dp(ui, 150), dp(ui, 40) },
                   "Open folder", ICON_FOLDER, false))
         open_folder(a, a->data_dir);
+    group(a, L, "Back up and restore",
+          "Copies your settings and MPV setup (mpv.conf, input.conf, scripts, shaders) into a plain folder you choose. It "
+          "never includes your media files or caches. Zip or sync the folder however you like.");
+    tog(a, L, "set-bk-hist", "Include watch and listening history", "Also copies history.db", &a->bk_history);
+    tog(a, L, "set-bk-shots", "Include screenshots", "Off by default", &a->bk_screens);
+    {
+        SDL_FRect b1 = { L->x, L->y, dp(ui, 230), dp(ui, 46) };
+        if (ui_button(ui, ui_id("set-backup"), b1, "Back up to a folder", ICON_FOLDER, false)) app_pick_backup_folder(a, false);
+        SDL_FRect b2 = { L->x + dp(ui, 242), L->y, dp(ui, 230), dp(ui, 46) };
+        if (ui_button(ui, ui_id("set-restore"), b2, "Restore from a folder", ICON_FOLDER, false)) app_pick_backup_folder(a, true);
+        L->y += dp(ui, 46) + L->gap;
+    }
+    note(a, L, ICON_SHIELD, "Restoring saves your current files in a pre-restore folder first and applies the backup when THC next starts.");
     group(a, L, "Network", "THC itself never uses the network. This also keeps MPV, which plays your videos, offline.");
     if (ui_toggle(ui, ui_id("set-mpvblock"), next_row(a, L, dp(ui, 72)), "Block network in MPV",
                   "No youtube-dl, no web addresses, only local files. Wins over mpv.conf.", &a->set.mpv_block_network))

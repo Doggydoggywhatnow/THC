@@ -123,6 +123,7 @@ endfunction()
 # thc_core: everything that does not need SDL (tested on its own).
 # ---------------------------------------------------------------------------
 add_library(thc_core STATIC
+  src/backup.c
   src/fstree.c
   src/history.c
   src/library.c
