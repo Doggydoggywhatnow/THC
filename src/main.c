@@ -698,6 +698,7 @@ static void handle_event(App *a, SDL_Event *ev)
 
 int main(int argc, char **argv)
 {
+    perf_init();                          /* THC_PERF: the time to the first frame counts from here */
     (void)argc;
     (void)argv;
     static App app;
@@ -781,7 +782,9 @@ int main(int argc, char **argv)
             app_history_changed();
         }
         music_pump(a);
+        perf_step(a);
         frame(a);
+        perf_after_frame();
     }
 
     music_shutdown(a);

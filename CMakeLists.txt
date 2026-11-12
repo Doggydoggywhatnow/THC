@@ -166,6 +166,7 @@ if(THC_BUILD_APP)
     src/mediakeys_linux.c
     src/mpv_dyn.c
     src/nsfw_app.c
+    src/perf.c
     src/player.c
     src/portal_books.c
     src/portal_music.c

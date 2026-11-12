@@ -1,0 +1,25 @@
+name: Performance baseline
+# A manual or nightly run of the 1,000-file case (docs/performance.md). It reports numbers; it does not fail on them.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 3 * * *'
+
+jobs:
+  perf:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y nasm libsqlite3-dev libmpv2 xvfb python3 \
+            libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev \
+            libxss-dev libxtst-dev libxkbcommon-dev libwayland-dev \
+            wayland-protocols libegl1-mesa-dev libgl-dev libdrm-dev libgbm-dev \
+            libasound2-dev libpulse-dev libdbus-1-dev libudev-dev
+      - run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+          cmake --build build --parallel
+      - run: python3 tools/perf/run.py build/thc 1000 | tee perf.md
+      - uses: actions/upload-artifact@v4
+        with: { name: perf, path: perf.md }

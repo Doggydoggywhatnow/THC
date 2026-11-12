@@ -225,6 +225,7 @@ void library_free(Library *lib);
 void tagcache_start(App *a);
 void tagcache_shutdown(void);
 const TagInfo *tag_get(const App *a, int root, const FsNode *file);
+int tagcache_total(void);
 int tagcache_done(void);   /* files read so far (the search index rebuilds as this grows) */
 /* "tag:<path>" key for art_get, if the file has an embedded cover. */
 bool tag_art_key(const App *a, int root, const FsNode *file, char *buf, size_t cap);
@@ -273,6 +274,11 @@ void nav_reset(PortalNav *n);
 void nav_push(App *a, PortalNav *n, int root, const char *rel);
 void nav_push_kind(App *a, PortalNav *n, int kind, int arg, int root, const char *rel);
 void app_rebuild_library(App *a);
+/* perf.c: the THC_PERF timing run (docs/performance.md) */
+bool perf_enabled(void);
+void perf_init(void);
+void perf_step(App *a);
+void perf_after_frame(void);
 /* nsfw_app.c */
 void app_nsfw_init(App *a);
 void app_nsfw_sync(App *a);               /* settings -> index config */

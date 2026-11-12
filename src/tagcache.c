@@ -138,6 +138,7 @@ void tagcache_start(App *a)
 }
 
 int tagcache_done(void) { return SDL_GetAtomicInt(&T.done); }
+int tagcache_total(void) { return T.n; }
 
 const TagInfo *tag_get(const App *a, int root, const FsNode *file)
 {
