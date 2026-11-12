@@ -1,5 +1,6 @@
 /* chrome.c: pieces shared by every screen: background, top bar, cards. */
 #include "app.h"
+#include "tablayout.h"
 
 #include <math.h>
 
@@ -46,7 +47,7 @@ void chrome_topbar(App *a)
     ui_fill(ui, (SDL_FRect){ 0, h - 1, (float)ui->w, 1 }, with_alpha(t->border, t->high_contrast ? 255 : 120), 0);
 
     /* wordmark: the logo is the way in to About and settings */
-    float x = dp(ui, 28);
+    float x = dp(ui, TOPBAR_EDGE_MARGIN);
     float lh = ui_line_h(ui, TS_H2);
     float lw0 = ui_text_w(ui, FONT_BOLD, TS_H2, "THC");
     SDL_FRect logo = { x - dp(ui, 10), (h - dp(ui, 48)) / 2, lw0 + dp(ui, 34), dp(ui, 48) };
@@ -60,7 +61,7 @@ void chrome_topbar(App *a)
     if (ls.focused) ui_focus_ring(ui, logo, logo.h / 2);
     if (ls.hover || ls.focused) ui_tooltip(ui, logo, "About THC and settings");
     if (ls.activated) app_go(a, on_about ? (a->last_portal ? a->last_portal : SCREEN_VIDEO) : SCREEN_SETTINGS);
-    x += lw + dp(ui, 36);
+    x += lw + dp(ui, LOGO_TO_TABS_GAP);
 
     /* portal tabs */
     /* the NSFW tab is not here at all while the portal is off or the tab is hidden */
@@ -68,25 +69,29 @@ void chrome_topbar(App *a)
     int ntabs = 0;
     for (int i = 0; i < NTABS; i++) tabs[ntabs++] = k_tabs[i];
     if (app_nsfw_tab_visible(a)) tabs[ntabs++] = (TabDef){ SCREEN_NSFW, "NSFW", ICON_BEER };
-    /* when the window is narrow only the selected tab keeps its label, the others are icons */
-    float need = x + dp(ui, 150);
-    for (int i = 0; i < ntabs; i++) need += ui_text_w(ui, FONT_BOLD, TS_BODY, tabs[i].label) + dp(ui, 60);
-    bool compact = need > (float)ui->w;
+    /* when the window is narrow only the selected tab keeps its label, the others are icons (tablayout.c) */
+    float label_w[TAB_MAX];
+    int selected = -1;
     for (int i = 0; i < ntabs; i++) {
-        bool sel = a->screen == tabs[i].s;
-        bool label = !compact || sel;
-        float tw = label ? ui_text_w(ui, FONT_BOLD, TS_BODY, tabs[i].label) + dp(ui, 52) : dp(ui, 46);
-        SDL_FRect r = { x, (h - dp(ui, 40)) / 2, tw, dp(ui, 40) };
+        label_w[i] = ui_text_w(ui, FONT_BOLD, TS_BODY, tabs[i].label);
+        if (a->screen == tabs[i].s) selected = i;
+    }
+    TabRect tr[TAB_MAX];
+    tab_layout(label_w, ntabs, selected, x, (float)ui->w, ui->s, tr);
+    for (int i = 0; i < ntabs; i++) {
+        bool sel = i == selected;
+        bool label = tr[i].labelled;
+        SDL_FRect r = { tr[i].x, (h - dp(ui, TAB_H)) / 2, tr[i].w, dp(ui, TAB_H) };
         Uint32 id = ui_idi("tab", i);
         UiItemState st = ui_item(ui, id, r);
         float hv = ui_anim_id(ui, id, (st.hover || sel) ? 1.0f : 0.0f, 16);
         if (sel) ui_fill(ui, r, t->text, r.h / 2);
         else if (hv > 0.01f) ui_fill(ui, r, with_alpha(t->surface_hi, (Uint8)(255 * hv)), r.h / 2);
         Color fg = sel ? t->bg2 : t->text;
-        float is = dp(ui, 18);
-        ui_icon(ui, tabs[i].icon, (SDL_FRect){ label ? r.x + dp(ui, 14) : r.x + (r.w - is) / 2, r.y + (r.h - is) / 2, is, is }, fg);
+        float is = dp(ui, TAB_ICON);
+        ui_icon(ui, tabs[i].icon, (SDL_FRect){ label ? r.x + dp(ui, TAB_PAD_X) : r.x + (r.w - is) / 2, r.y + (r.h - is) / 2, is, is }, fg);
         if (label)
-            ui_text_center(ui, FONT_BOLD, TS_BODY, (SDL_FRect){ r.x + dp(ui, 38), r.y, r.w - dp(ui, 46), r.h }, fg,
+            ui_text_center(ui, FONT_BOLD, TS_BODY, (SDL_FRect){ r.x + dp(ui, TAB_PAD_X + TAB_ICON + TAB_ICON_LABEL_GAP), r.y, r.w - dp(ui, TAB_PAD_X + TAB_ICON + TAB_ICON_LABEL_GAP + 8), r.h }, fg,
                            tabs[i].label, false);
         else
             { if (st.hover || st.focused) ui_tooltip(ui, r, tabs[i].label); }
@@ -97,11 +102,10 @@ void chrome_topbar(App *a)
             ctx_pos(ui, r, &cx, &cy);
             chrome_nsfw_tab_menu(a, cx, cy);
         }
-        x += tw + dp(ui, 8);
     }
 
     /* right side: scan status */
-    float rx = ui->w - dp(ui, 28);
+    float rx = ui->w - dp(ui, TOPBAR_EDGE_MARGIN);
     /* the queue button, with the number of items waiting */
     {
         float bs = dp(ui, 44);

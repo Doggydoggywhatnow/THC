@@ -234,6 +234,7 @@ THC has its own separate area for configuring the MPV it uses. That means you ca
 There were no mockups; these are the decisions behind the look, so it stays consistent:
 
 - **A streaming-service layout.** A top bar with the THC logo, the three portals (Video, Music, Audiobooks). The **logo is the way in to About and Settings** (below). Pages scroll vertically; rows of cards scroll sideways. Cards lift slightly under the mouse or keyboard focus.
+- **Tab spacing (0.3.1).** The top bar's spacing lives in named constants in `include/tablayout.h`, in dp so it follows UI scale: `TAB_GAP` 8 between tabs, `TAB_H` 40 for every tab, `TAB_PAD_X` 14, `TAB_ICON` 18, `TAB_ICON_LABEL_GAP` 6, `TAB_PAD_RIGHT` 14, `TAB_MIN_W` 46 (an icon-only tab), `TOPBAR_EDGE_MARGIN` 28, `LOGO_TO_TABS_GAP` 36 and `TAB_RIGHT_RESERVE` 150. One function, `tab_layout()`, places every tab, so gaps are equal whether or not a tab shows its label; when the window is too narrow only the selected tab keeps its label. The 0.3.0 values are the baseline: the first change was a refactor with a pixel-identical top bar.
 - **Each portal has its own look,** in both dark and light mode:
   - **Video, "Cinema":** deep navy with an ember (orange to rose) accent. Tall 2:3 posters, wide 16:9 cards for Continue watching and Up next, a large banner at the top.
   - **Music, "Vinyl":** plum night with mint and violet. Round artist avatars, square album covers, an album page with the cover beside the track list.

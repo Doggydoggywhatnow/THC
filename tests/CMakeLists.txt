@@ -37,6 +37,10 @@ add_executable(test_nsfw test_nsfw.c)
 target_link_libraries(test_nsfw PRIVATE thc_core)
 add_test(NAME nsfw COMMAND test_nsfw WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
+add_executable(test_tablayout test_tablayout.c)
+target_link_libraries(test_tablayout PRIVATE thc_core)
+add_test(NAME tablayout COMMAND test_tablayout)
+
 add_executable(test_pin test_pin.c)
 target_link_libraries(test_pin PRIVATE thc_core)
 add_test(NAME pin COMMAND test_pin)

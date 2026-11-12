@@ -136,6 +136,7 @@ add_library(thc_core STATIC
   src/screenshots.c
   src/search.c
   src/settings.c
+  src/tablayout.c
   src/tags.c
   src/thumbkey.c)
 target_include_directories(thc_core PUBLIC include)
