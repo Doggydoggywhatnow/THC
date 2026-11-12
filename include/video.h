@@ -17,7 +17,8 @@ enum {
     VIDEO_EV_PAUSED   = 1 << 1, /* playback was paused */
     VIDEO_EV_ENDED    = 1 << 2, /* the session is over (EOF, quit, error) */
     VIDEO_EV_LOADED   = 1 << 3, /* file loaded, duration known */
-    VIDEO_EV_CHANGED  = 1 << 4  /* any observed value changed (redraw) */
+    VIDEO_EV_CHANGED  = 1 << 4, /* any observed value changed (redraw) */
+    VIDEO_EV_FILE_ENDED = 1 << 5 /* chain mode: one file finished, the window stays open */
 };
 
 typedef struct VideoSession {
@@ -30,6 +31,8 @@ typedef struct VideoSession {
     double pos;         /* seconds */
     double duration;    /* seconds, 0 = unknown */
     uint64_t last_progress_ms;
+    bool chain;         /* the window outlives a file: THC loads the next one into it */
+    int expect_stops;   /* END_FILE events caused by our own loadfile, to ignore */
     char error[256];
 } VideoSession;
 
@@ -40,9 +43,13 @@ typedef struct VideoOptions {
     double start;            /* resume position in seconds, 0 = beginning */
     bool audio_only;
     uint32_t wake_event;     /* SDL user event pushed when mpv has news */
+    bool chain;              /* keep the window open between files (video queue) */
 } VideoOptions;
 
 bool video_play(VideoSession *s, const MpvApi *api, const char *path, const VideoOptions *opt);
+
+/* Load another file into the same session (same window), starting at `start` seconds. */
+bool video_load(VideoSession *s, const char *path, double start);
 
 /* Handle pending mpv events. Returns a mask of VIDEO_EV_* flags. */
 int video_pump(VideoSession *s);

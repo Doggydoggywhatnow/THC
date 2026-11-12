@@ -26,6 +26,7 @@ typedef struct QueueItem {
     int64_t size;
     char title[160];
     char sub[160];           /* artist, show and episode, ... */
+    char art[512];           /* cover: an image path or a tag-art key (app-defined) */
     int mode;                /* QMODE_*: only used for videos in the music queue */
     bool played;
 } QueueItem;
@@ -94,6 +95,25 @@ typedef struct QueueImport {
     char missing_names[8][160];   /* the first few missing entries, for the message */
 } QueueImport;
 void queue_import_m3u8(Queue *q, const char *text, QueueResolve resolve, void *ud, QueueImport *out);
+
+/* ---- the dispatcher's decisions (pure, so they can be tested without any backend) ---- */
+enum { BACKEND_SKIP = 0, BACKEND_VIDEO_WINDOW, BACKEND_ENGINE, BACKEND_MPV_AUDIO, BACKEND_NONE_AVAILABLE };
+typedef struct DispatchIn {
+    int queue;                 /* QUEUE_MUSIC / QUEUE_VIDEO: the queue the item is played from */
+    const QueueItem *item;
+    bool engine_handles;       /* THC's own engine can decode this file */
+    bool have_mpv;
+    bool audio_playing;        /* a sound backend is playing (not paused) */
+    bool window_open;          /* the mpv video window is open */
+    bool pause_music_on_video; /* setting */
+} DispatchIn;
+typedef struct DispatchPlan {
+    int backend;               /* BACKEND_* for the item */
+    bool suspend_music;        /* pause the playing sound first (and resume it after the video queue) */
+    bool close_window;         /* close the video window (a sound item is next) */
+    bool open_window;          /* a window has to be opened (none is open yet) */
+} DispatchPlan;
+DispatchPlan queue_dispatch(const DispatchIn *in);
 
 /* Utility used by the UI: a stable "N of M" position text pieces. */
 int queue_played_count(const Queue *q);

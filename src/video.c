@@ -90,7 +90,7 @@ bool video_play(VideoSession *s, const MpvApi *api, const char *path, const Vide
     api->set_option_string(s->h, "input-default-bindings", "yes");
     api->set_option_string(s->h, "input-vo-keyboard", "yes");
     api->set_option_string(s->h, "osc", "yes");
-    api->set_option_string(s->h, "idle", "once");
+    api->set_option_string(s->h, "idle", opt->chain ? "yes" : "once");
     api->set_option_string(s->h, "keep-open", "no");
     api->set_option_string(s->h, "title", "${media-title} - THC");
     if (opt->audio_only) {
@@ -144,6 +144,26 @@ bool video_play(VideoSession *s, const MpvApi *api, const char *path, const Vide
         return false;
     }
     s->active = true;
+    s->chain = opt->chain;
+    s->last_progress_ms = SDL_GetTicks();
+    return true;
+}
+
+bool video_load(VideoSession *s, const char *path, double start)
+{
+    if (!s->h) return false;
+    char sb[64];
+    SDL_snprintf(sb, sizeof sb, "%.3f", start > 1.0 ? start : 0.0);
+    s->api->set_property_string(s->h, "start", sb);   /* a property: it wins over mpv.conf */
+    /* replacing a file that is still playing makes mpv report the old one as stopped: ignore that */
+    if (s->active && !s->reached_eof) s->expect_stops++;
+    const char *cmd[] = { "loadfile", path, "replace", NULL };
+    if (s->api->command(s->h, cmd) < 0) return false;
+    s->active = true;
+    s->reached_eof = false;
+    s->failed = false;
+    s->pos = 0;
+    s->duration = 0;
     s->last_progress_ms = SDL_GetTicks();
     return true;
 }
@@ -181,6 +201,23 @@ int video_pump(VideoSession *s)
         case MPV_EVENT_END_FILE: {
             mpv_event_end_file *e = ev->data;
             if (e && e->reason == MPV_END_FILE_REASON_REDIRECT) break;
+            if (e && e->reason == MPV_END_FILE_REASON_STOP && s->expect_stops > 0) {
+                s->expect_stops--;       /* the old file was replaced by our own loadfile */
+                break;
+            }
+            if (s->chain && e && e->reason != MPV_END_FILE_REASON_QUIT) {
+                /* the window stays: report the file, and let the player decide what is next */
+                if (e->reason == MPV_END_FILE_REASON_EOF) {
+                    s->reached_eof = true;
+                    if (s->duration > 0) s->pos = s->duration;
+                }
+                if (e->reason == MPV_END_FILE_REASON_ERROR) {
+                    s->failed = true;
+                    SDL_snprintf(s->error, sizeof s->error, "mpv could not play the file: %s", s->api->error_string(e->error));
+                }
+                flags |= VIDEO_EV_FILE_ENDED | VIDEO_EV_CHANGED;
+                break;
+            }
             if (e && e->reason == MPV_END_FILE_REASON_EOF) {
                 s->reached_eof = true;
                 if (s->duration > 0) s->pos = s->duration;

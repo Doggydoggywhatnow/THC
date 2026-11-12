@@ -113,7 +113,29 @@ bool app_history(App *a, const FsNode *file, HistoryEntry *e);
 
 void app_history_changed(void);
 
-/* music.c: the music and audiobook player (bottom bar) */
+/* player.c: the player: both queues, the backends, the bottom bar */
+#include "queue.h"
+Queue *player_queue(int id);
+int player_active_queue(void);
+void player_play_index(App *a, int qid, int idx);
+void player_play_items(App *a, int qid, const QueueItem *items, int n, int start_index);
+void player_play_now(App *a, const QueueItem *it);
+void player_next(App *a);
+void player_prev(App *a);
+void player_toggle_pause(App *a);
+void player_stop(App *a);
+void player_seek_relative(App *a, double seconds);
+void player_set_volume(App *a, int percent);
+void player_close_video(App *a);
+void player_clear_queue(App *a, int qid);
+bool player_has_item(const App *a);
+bool player_is_paused(const App *a);
+double player_position(const App *a);
+double player_duration(const App *a);
+const QueueItem *player_current(void);
+void qitem_from_node(App *a, QueueItem *it, int root, const FsNode *f, const char *sub, const char *art);
+int player_items_for(App *a, int root, const FsNode *dir, QueueItem *out, int max);
+int music_tracks(const App *a, int root, const FsNode *dir, const FsNode **out, int max);
 void music_init(App *a);
 void music_shutdown(App *a);
 void music_pump(App *a);

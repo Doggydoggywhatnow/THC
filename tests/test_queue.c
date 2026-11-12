@@ -198,6 +198,57 @@ int main(void)
     queue_import_m3u8(&r, "\xEF\xBB\xBF#EXTM3U\r\nPlain.mp3\r\n", resolve, NULL, &imp);     /* a plain M3U with a BOM and CRLF */
     CHECK(imp.home == -1 && imp.added == 1 && r.n == 1 && !strcmp(r.items[0].rel, "Plain.mp3"));
     queue_free(&r);
+
+    /* the dispatcher picks the right backend for every combination */
+    {
+        QueueItem video = mk("v", QK_VIDEO), song = mk("s", QK_SONG), book = mk("b", QK_BOOK);
+        video.mode = QMODE_WINDOW;
+        DispatchIn in = { QUEUE_VIDEO, &video, false, true, false, false, true };
+        DispatchPlan p = queue_dispatch(&in);
+        CHECK(p.backend == BACKEND_VIDEO_WINDOW && p.open_window && !p.suspend_music && !p.close_window);
+        in.window_open = true;                                   /* the next video goes into the same window */
+        p = queue_dispatch(&in);
+        CHECK(p.backend == BACKEND_VIDEO_WINDOW && !p.open_window);
+        in.audio_playing = true;                                 /* music is playing: it pauses for the video */
+        p = queue_dispatch(&in);
+        CHECK(p.suspend_music);
+        in.pause_music_on_video = false;                         /* unless the setting is off */
+        p = queue_dispatch(&in);
+        CHECK(!p.suspend_music);
+        in.pause_music_on_video = true;
+        in.have_mpv = false;                                     /* no libmpv: videos cannot play */
+        CHECK(queue_dispatch(&in).backend == BACKEND_NONE_AVAILABLE);
+        in.have_mpv = true;
+
+        /* a video in the music queue: window by default, or sound only, or skipped */
+        in.queue = QUEUE_MUSIC;
+        in.window_open = false;
+        p = queue_dispatch(&in);
+        CHECK(p.backend == BACKEND_VIDEO_WINDOW && p.open_window);
+        video.mode = QMODE_LISTEN;
+        p = queue_dispatch(&in);
+        CHECK(p.backend == BACKEND_MPV_AUDIO && !p.open_window);
+        video.mode = QMODE_SKIP;
+        CHECK(queue_dispatch(&in).backend == BACKEND_SKIP);
+
+        /* a song in the video queue plays in the player bar and closes the window */
+        DispatchIn s = { QUEUE_VIDEO, &song, true, true, false, true, true };
+        p = queue_dispatch(&s);
+        CHECK(p.backend == BACKEND_ENGINE && p.close_window);
+        s.engine_handles = false;                                /* M4A, Opus: libmpv without a window */
+        CHECK(queue_dispatch(&s).backend == BACKEND_MPV_AUDIO);
+        s.have_mpv = false;
+        CHECK(queue_dispatch(&s).backend == BACKEND_NONE_AVAILABLE);
+        /* audiobooks: libmpv when there is one (speed without pitch change), else the engine for MP3 */
+        DispatchIn b = { QUEUE_MUSIC, &book, true, true, false, false, true };
+        CHECK(queue_dispatch(&b).backend == BACKEND_MPV_AUDIO && !queue_dispatch(&b).close_window);
+        b.have_mpv = false;
+        CHECK(queue_dispatch(&b).backend == BACKEND_ENGINE);
+        b.engine_handles = false;                                /* M4B without libmpv */
+        CHECK(queue_dispatch(&b).backend == BACKEND_NONE_AVAILABLE);
+        CHECK(queue_dispatch(&(DispatchIn){ 0 }).backend == BACKEND_SKIP);
+    }
+
     queue_free(&q);
     queue_free(&v);
     TEST_DONE();

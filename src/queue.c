@@ -243,3 +243,30 @@ void queue_import_m3u8(Queue *q, const char *text, QueueResolve resolve, void *u
         title[0] = 0;
     }
 }
+
+DispatchPlan queue_dispatch(const DispatchIn *in)
+{
+    DispatchPlan p = { BACKEND_SKIP, false, false, false };
+    const QueueItem *it = in->item;
+    if (!it) return p;
+    if (it->kind == QK_VIDEO) {
+        if (in->queue == QUEUE_VIDEO || it->mode == QMODE_WINDOW) {
+            if (!in->have_mpv) { p.backend = BACKEND_NONE_AVAILABLE; return p; }
+            p.backend = BACKEND_VIDEO_WINDOW;
+            p.open_window = !in->window_open;
+            p.suspend_music = in->audio_playing && in->pause_music_on_video;
+            return p;
+        }
+        if (it->mode == QMODE_SKIP) return p;                       /* skipped */
+        p.backend = in->have_mpv ? BACKEND_MPV_AUDIO : BACKEND_NONE_AVAILABLE;   /* listen only */
+        p.close_window = in->window_open;
+        return p;
+    }
+    /* a song or an audiobook: in the player bar, whatever queue it sits in */
+    p.close_window = in->window_open;
+    bool book = it->kind == QK_BOOK;
+    if (in->have_mpv && (!in->engine_handles || book)) p.backend = BACKEND_MPV_AUDIO;
+    else if (in->engine_handles) p.backend = BACKEND_ENGINE;
+    else p.backend = BACKEND_NONE_AVAILABLE;
+    return p;
+}

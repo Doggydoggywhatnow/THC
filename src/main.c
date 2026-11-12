@@ -239,59 +239,6 @@ static void poll_dialog(App *a)
 /* Video playback                                                             */
 /* ------------------------------------------------------------------------ */
 
-static void save_video_progress(App *a)
-{
-    if (!a->play_key[0] || !settings_history_on(&a->set, KIND_VIDEO)) return;
-    if (a->video.failed && a->video.pos <= 0) return;
-    history_save_ex(a->hist, a->play_key, a->play_size, KIND_VIDEO, a->video.pos, a->video.duration,
-                 a->set.watched_threshold, a->video.reached_eof);
-    app_history_changed();
-}
-
-void app_play_video(App *a, int root, const FsNode *file)
-{
-    if (!a->have_mpv) {
-        app_toast(a, "libmpv was not found. Install mpv (libmpv) to play videos.");
-        return;
-    }
-    if (a->video.h) {
-        save_video_progress(a);
-        video_stop(&a->video);
-    }
-    char path[THC_PATH_MAX];
-    app_full_path(a, root, file, path, sizeof path);
-    fs_relpath(file, a->play_key, sizeof a->play_key);
-    a->play_size = file->size;
-    SDL_strlcpy(a->play_title, file->name, sizeof a->play_title);
-    char *dot = SDL_strrchr(a->play_title, '.');
-    if (dot && dot != a->play_title) *dot = 0;
-
-    VideoOptions o = { a->mpv_dir, 0, false, a->mpv_event };
-    HistoryEntry e;
-    if (settings_history_on(&a->set, KIND_VIDEO) && history_get(a->hist, a->play_key, a->play_size, &e))
-        o.start = history_resume_point(&e, a->set.watched_threshold);
-    if (!video_play(&a->video, &a->mpv, path, &o)) {
-        app_toast(a, "%s", a->video.error);
-        a->play_key[0] = 0;
-        return;
-    }
-    if (o.start > 0) {
-        char t[32];
-        fmt_time(o.start, t, sizeof t);
-        app_toast(a, "Resuming %s at %s", a->play_title, t);
-    }
-}
-
-static void pump_video(App *a)
-{
-    int f = video_pump(&a->video);
-    if (f & (VIDEO_EV_PROGRESS | VIDEO_EV_PAUSED | VIDEO_EV_ENDED)) save_video_progress(a);
-    if (f & VIDEO_EV_ENDED) {
-        if (a->video.failed && a->video.pos <= 0) app_toast(a, "%s", a->video.error);
-        a->play_key[0] = 0;
-    }
-}
-
 /* The "now playing in mpv" pill shown while a video plays. */
 static void video_pill(App *a)
 {
@@ -322,9 +269,7 @@ static void video_pill(App *a)
     ui->layer = 1;
     if (ui_button(ui, ui_id("video-stop"), (SDL_FRect){ r.x + r.w - bw - dp(ui, 8), r.y + dp(ui, 8), bw, h - dp(ui, 16) },
                   "Stop", ICON_NONE, false)) {
-        save_video_progress(a);
-        video_stop(&a->video);
-        a->play_key[0] = 0;
+        player_close_video(a);
     }
     ui->layer = 0;
 }
@@ -649,15 +594,10 @@ int main(int argc, char **argv)
             tagcache_start(a);
             app_history_changed();
         }
-        pump_video(a);
         music_pump(a);
         frame(a);
     }
 
-    if (a->video.h) {
-        save_video_progress(a);
-        video_stop(&a->video);
-    }
     music_shutdown(a);
     tagcache_shutdown();
     thumbs_shutdown();
