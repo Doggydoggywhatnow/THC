@@ -2,7 +2,7 @@
 
 THC is a lightweight multimedia player written in **C** (C11). **Stay in C.** See `README.md`: it is the spec.
 
-## Goal (the current release's build spec is `docs/0.3.0.md`; older specs are `docs/0.2.0.md` and the README)
+## Goal (the current release's build spec is `docs/0.3.1.md`; older specs are `docs/0.3.0.md`, `docs/0.2.0.md` and the README)
 The original goal, still the standard: a demo that shows off **everything in the README**, close to the final design. We optimize afterward. Features the README marks *(planned)* or *(later)* (audio effect plugins, screen reader support, episode metadata fetching) may be stubs.
 
 If you deviate from the README, update the README in the same change.
@@ -35,7 +35,7 @@ If you deviate from the README, update the README in the same change.
 - lib-Peep: https://github.com/Doggydoggywhatnow/lib-Peep
 
 ## Getting started
-Read `README.md`, this file and the current build spec (`docs/0.3.0.md`), then build the release on `dev` following the spec's build order. Commit and push after each slice. The slice order above is the history of v0.1.0.
+Read `README.md`, this file and the current build spec (`docs/0.3.1.md`), then build the release on `dev` following the spec's build order. Commit and push after each slice. The slice order above is the history of v0.1.0; each later spec has its own build order.
 
 ## CI
 CI (`.github/workflows/ci.yml`) currently only builds the skeleton. When you add SDL3, libmpv, SQLite, or lib-Peep, update the workflow in the same slice to install them on all three OSes (Linux, Windows, macOS) so CI stays green.

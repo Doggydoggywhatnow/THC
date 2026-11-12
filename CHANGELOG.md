@@ -2,6 +2,21 @@
 
 THC uses `x.y.z` versions: major, minor (big features), patch (small features, fixes, security).
 
+## 0.3.1
+
+### Added
+- **NSFW folder** (#34): Settings, Library takes one NSFW folder. THC scans it read-only and everything in it is NSFW: it shows only in the NSFW portal, never in the normal portals, search, Continue watching, counts or queues, and a library folder that contains it leaves it out. A new **Folders** tab in the NSFW portal (shown only when a folder is set) lists each subfolder as a group with its item count, loose files under **Unsorted**, nested groups, empty folders hidden. Its videos also show in the NSFW Video tab. The folder is part of backups, and `thc-inspect` reports it as set or not set, never its path or contents.
+- **Why is it NSFW?** (#28): every card and row in the NSFW portal says why ("Marked", "In a folder you marked", "Library folder marked NSFW", "In your NSFW folder"), as text and as a tooltip. The right-click menu and the `N` key offer **Remove from NSFW**, **Not NSFW (override)** or, for files from the NSFW folder, only a note.
+
+### Changed
+- **Top-bar tab spacing is standardized** (#33): named constants and one tested layout function (`include/tablayout.h`) give equal gaps whatever the labels, and the same height and minimum width for every tab. The bar looks exactly as it did in 0.3.0.
+
+### Removed
+- **NSFW folder-name rules** (#34) did not work as expected and are gone, with their Settings controls. The `nsfw_rules_enabled` and `nsfw_rules` keys stay in `settings.ini`, unused and written back unchanged; a one-time notice in Settings, Privacy explains it. Nothing is deleted, and explicit marks and "Not NSFW" overrides are unaffected.
+
+### Not in this release
+- The NSFW folder's music and audiobooks are reached through the Folders tab, not the NSFW Music and Audiobooks tabs (#35).
+
 ## 0.3.0
 
 ### Added

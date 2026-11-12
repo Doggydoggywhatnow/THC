@@ -1,6 +1,6 @@
 # Maintainer: THC contributors <thc@users.noreply.github.com>
 pkgname=thc
-pkgver=0.3.0
+pkgver=0.3.1
 pkgrel=0
 pkgdesc="Lightweight player for the music and videos you already have"
 url="https://github.com/Doggydoggywhatnow/THC"

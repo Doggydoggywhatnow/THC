@@ -26,7 +26,7 @@
 #endif
 
 #ifndef INSPECT_VERSION
-#define INSPECT_VERSION "0.3.0"
+#define INSPECT_VERSION "0.3.1"
 #endif
 
 /* ------------------------------------------------------------------------ */

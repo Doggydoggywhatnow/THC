@@ -1,6 +1,6 @@
 name: thc
 base: core24
-version: '0.3.0'
+version: '0.3.1'
 summary: Lightweight player for the music and videos you already have
 description: |
   THC turns your local folders into a streaming-style library with resume,
