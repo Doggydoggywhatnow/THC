@@ -2,6 +2,19 @@
 
 THC uses `x.y.z` versions: major, minor (big features), patch (small features, fixes, security).
 
+## 0.2.0
+
+### Added
+- **Queue** with a panel, drag and keyboard reordering, shuffle, repeat, backlog, M3U8 export and import, right-click menus and Add buttons. Video queues chain in one window. (#1, #11)
+- **Music search** with typo tolerance. (#7)
+- **Listening history:** plays, Recently played, Most played, per-portal history switches, Private session, clear per kind, JSON and CSV export. History database schema 2 (older databases are upgraded after a backup). (#11)
+- **Media keys and now playing** (MPRIS on Linux; focused-window keys elsewhere), with video private by default. (#23)
+- **Keep the video window on top**, with a hotkey. (#18)
+- **thc-inspect** and the **Block network in MPV** switch, plus a "what THC stores" list. (#14)
+
+### Known gaps
+- System-wide media keys and the lock-screen widget on Windows and macOS; connection listing in thc-inspect outside Linux; always-on-top still needs a real-desktop check. See `docs/0.2.0.md`.
+
 ## 0.1.3
 
 ### Fixed

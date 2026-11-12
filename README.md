@@ -4,7 +4,7 @@
 
 THC is a graphical interface for your local media, written in C. It shows what's already on your device, built around the way you already organize your files, and makes browsing it feel as unique and enjoyable as booting up a streaming service, without the streaming service. No accounts, no uploads, no subscriptions: just your library, on your device.
 
-> **Status:** version 0.1.3, an early demo of the full design. Sections marked *(planned)* or *(later)* describe where THC is headed rather than what ships today.
+> **Status:** version 0.2.0, an early demo of the full design. Sections marked *(planned)* or *(later)* describe where THC is headed rather than what ships today.
 
 ---
 
@@ -152,6 +152,16 @@ Sorting only changes what you see in THC:
 - **Move a show to another section** from its page (for example, a cartoon that was detected as Television). THC remembers this in its settings file; your folders stay exactly as they are.
 - **Browse folders** on the video home page shows your folders exactly as they are on disk.
 
+## Queue, search, history and more (0.2.0)
+
+- **Queue:** the Queue button (hotkey `Q`) opens a panel with one queue for music and audiobooks and one for video. Add songs, albums, episodes, seasons, shows or books with the Add buttons or the right-click menu (also the Menu key); "Play next" puts something right after the current item. Reorder by dragging the grip or with Alt+Up/Down, remove with Delete, shuffle, repeat, Export and Import as M3U8 (the system file dialog). Played items stay above the current one as a backlog (kept between sessions only if you turn that on). Videos in the queue play one after another in a single window.
+- **Music search:** a field at the top of Music (hotkey `/`) with All, Artists, Albums and Songs. It ignores case, accents and punctuation, ranks exact and prefix matches first, and forgives one typo in words of four or more letters.
+- **Listening history:** Recently played and Most played rows, plays counted per song (threshold in Settings), album pages say how many tracks you played, long songs resume. Each portal has its own history switch, there is a Private session, and Settings, Privacy can clear each kind and export everything as JSON or CSV.
+- **Media keys and now playing:** media keys control THC; on Linux THC appears as an MPRIS player (`playerctl` works). Video shares nothing with the system by default; Settings, System decides what is shown. Windows and macOS system-wide keys and lock-screen widgets are not built yet: there the keys work while THC's window is focused.
+- **Video on top:** Settings, System keeps the video window on top (Off, While playing, Always), ignoring fullscreen by default; `Ctrl+T` cycles it. On Wayland the compositor decides; the window has the app id `thc` for rules.
+- **Block network in MPV** (Settings, Privacy, on by default): no youtube-dl, no web addresses and a local-only protocol whitelist for THC's MPV, whatever `mpv.conf` says.
+- **thc-inspect:** `thc-inspect` lists the files THC wrote, the history database tables, a running THC's network sockets (Linux), whether THC's program imports network functions, and whether MPV could go online; `--media <folder> --snapshot f` then `--compare f` proves your media was not touched. `--json` for scripts; exit code 0 pass, 1 findings, 2 error. Settings, Privacy lists what THC stores.
+
 ## Watch history
 
 THC stores and displays your viewing history right under each video file: a playback bar showing how far you got, and a checkmark once you've watched it. Keeping up with a show is a glance at the screen.
@@ -193,7 +203,7 @@ THC is available on **Windows**, **Linux**, and **macOS**. On Linux it runs on *
 
 THC ships as a **separate, dedicated build for each operating system**, rather than a single universal package.
 
-Platform notes for 0.1.3:
+Platform notes for 0.2.0:
 
 - CI builds and tests THC on Windows (x86-64, MSVC), Linux (x86-64) and macOS (Apple Silicon) on every push, including lib-Peep's assembly.
 - Video playback opens MPV's own window through libmpv. This was tested on Linux; on macOS, libmpv's ability to open its own window depends on how libmpv was built, which has not been tested yet.
@@ -289,15 +299,23 @@ A few options are fixed by THC so its watch history stays correct, and `mpv.conf
 
 ## Downloads
 
-Linux packages for **v0.1.3** (x86-64) are rebuilt by CI on every push to `dev` and stored in the [`downloads/`](https://github.com/Doggydoggywhatnow/THC/tree/dev/downloads) folder.
+Linux packages for **v0.2.0** (x86-64) are rebuilt by CI on every push to `dev` and stored in the [`downloads/`](https://github.com/Doggydoggywhatnow/THC/tree/dev/downloads) folder.
 
 | Distribution | Download | Install |
 | --- | --- | --- |
-| Debian, Ubuntu, Mint | [thc_0.1.3_amd64.deb](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc_0.1.3_amd64.deb) | `sudo apt install ./thc_0.1.3_amd64.deb` |
-| Any distribution (AppImage) | [THC-0.1.3-x86_64.AppImage](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/THC-0.1.3-x86_64.AppImage) | `chmod +x THC-*.AppImage && ./THC-*.AppImage` |
-| Alpine Linux | [thc-0.1.3-r0-alpine-x86_64.apk](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc-0.1.3-r0-alpine-x86_64.apk) | `sudo apk add --allow-untrusted ./thc-0.1.3-r0-alpine-x86_64.apk` |
-| Void Linux | [thc-0.1.3_1.x86_64.xbps](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc-0.1.3_1.x86_64.xbps) | `xbps-rindex -a thc-*.xbps && sudo xbps-install -R $PWD thc` |
-| Other (tarball) | [thc-0.1.3-linux-x86_64.tar.gz](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc-0.1.3-linux-x86_64.tar.gz) | unpack into `/usr` or `~/.local` |
+| Debian, Ubuntu, Mint | [thc_0.2.0_amd64.deb](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc_0.2.0_amd64.deb) | `sudo apt install ./thc_0.2.0_amd64.deb` |
+| Any distribution (AppImage) | [THC-0.2.0-x86_64.AppImage](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/THC-0.2.0-x86_64.AppImage) | `chmod +x THC-*.AppImage && ./THC-*.AppImage` |
+| Alpine Linux | [thc-0.2.0-r0-alpine-x86_64.apk](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc-0.2.0-r0-alpine-x86_64.apk) | `sudo apk add --allow-untrusted ./thc-0.2.0-r0-alpine-x86_64.apk` |
+| Void Linux | [thc-0.2.0_1.x86_64.xbps](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc-0.2.0_1.x86_64.xbps) | `xbps-rindex -a thc-*.xbps && sudo xbps-install -R $PWD thc` |
+| Other (tarball) | [thc-0.2.0-linux-x86_64.tar.gz](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc-0.2.0-linux-x86_64.tar.gz) | unpack into `/usr` or `~/.local` |
+
+**thc-inspect** (read-only; checks what THC stores and whether it uses the network):
+
+| System | Download |
+| --- | --- |
+| Linux | [thc-inspect-0.2.0-x86_64.AppImage](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc-inspect-0.2.0-x86_64.AppImage) (also installed by the .deb and tarball) |
+| Windows | [thc-inspect-0.2.0-windows-x86_64.exe](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc-inspect-0.2.0-windows-x86_64.exe) |
+| macOS | [thc-inspect-0.2.0-macos-arm64](https://github.com/Doggydoggywhatnow/THC/raw/dev/downloads/thc-inspect-0.2.0-macos-arm64) |
 
 Video playback needs MPV's library (libmpv) on your system: `libmpv2` on Debian/Ubuntu, `mpv-libs` on Alpine, `mpv` on Void. The .deb, .apk and .xbps pull it in; the AppImage and tarball use whatever is installed. Music works without it.
 

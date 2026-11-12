@@ -1,6 +1,6 @@
 # Template file for 'thc'
 pkgname=thc
-version=0.1.3
+version=0.2.0
 revision=1
 build_style=cmake
 configure_args="-DTHC_FETCH_DEPS=OFF"
