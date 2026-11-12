@@ -13,6 +13,9 @@ int main(void) { printf("SKIP: not built for Windows\n"); return 0; }
 #include <sys/wait.h>
 #include <unistd.h>
 
+#ifndef INSPECT_CLEAN
+#error INSPECT_CLEAN
+#endif
 #ifndef INSPECT_BIN
 #error INSPECT_BIN
 #endif
@@ -61,26 +64,26 @@ int main(void)
     write_file("insp_fx/settings.ini", "mpv_block_network=true\n");
 
     /* clean data, the tool's own program (no network imports): pass */
-    int rc = run("%s --data insp_fx --exe %s", INSPECT_BIN, INSPECT_BIN);
+    int rc = run("%s --data insp_fx --exe %s", INSPECT_BIN, INSPECT_CLEAN);
     CHECK(rc == 0);
     CHECK(strstr(out, "history.db") && strstr(out, "schema version: 2") && strstr(out, "history: 2 rows"));
     CHECK(strstr(out, "Result: pass"));
     CHECK(!strstr(out, "Shows/A/a.mkv"));                  /* titles stay hidden by default */
-    CHECK(run("%s --data insp_fx --exe %s --show-titles", INSPECT_BIN, INSPECT_BIN) == 0 && strstr(out, "Shows/A/a.mkv"));
+    CHECK(run("%s --data insp_fx --exe %s --show-titles", INSPECT_BIN, INSPECT_CLEAN) == 0 && strstr(out, "Shows/A/a.mkv"));
 
     /* JSON */
-    rc = run("%s --data insp_fx --exe %s --json", INSPECT_BIN, INSPECT_BIN);
+    rc = run("%s --data insp_fx --exe %s --json", INSPECT_BIN, INSPECT_CLEAN);
     CHECK(rc == 0 && out[0] == '{' && strstr(out, "\"result\":\"pass\"") && strstr(out, "\"findings\":0"));
     CHECK(strstr(out, "\"name\":\"History database\""));
 
     /* "Block network" off and an online mpv.conf: findings, exit 1 */
     write_file("insp_fx/settings.ini", "mpv_block_network=false\n");
     write_file("insp_fx/mpv/mpv.conf", "volume=50\nytdl=yes\n");
-    rc = run("%s --data insp_fx --exe %s", INSPECT_BIN, INSPECT_BIN);
+    rc = run("%s --data insp_fx --exe %s", INSPECT_BIN, INSPECT_CLEAN);
     CHECK(rc == 1 && strstr(out, "Block network in MPV\" is off") && strstr(out, "line 2 (ytdl)"));
     /* with the block on, the same mpv.conf is only a note */
     write_file("insp_fx/settings.ini", "mpv_block_network=true\n");
-    rc = run("%s --data insp_fx --exe %s", INSPECT_BIN, INSPECT_BIN);
+    rc = run("%s --data insp_fx --exe %s", INSPECT_BIN, INSPECT_CLEAN);
     CHECK(rc == 0 && strstr(out, "THC's block overrides it"));
 
     /* a program that imports socket() fails the check */

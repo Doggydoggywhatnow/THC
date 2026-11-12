@@ -83,11 +83,12 @@ endif()
 # thc-inspect: reports, exit codes, the imports check on a bad program, the media fingerprint.
 if(UNIX AND THC_BUILD_INSPECT)
   add_executable(inspect_netuser inspect_netuser.c)
+  add_executable(inspect_clean inspect_clean.c)
   add_executable(test_inspect test_inspect.c)
   target_link_libraries(test_inspect PRIVATE thc_core)
   target_compile_definitions(test_inspect PRIVATE INSPECT_BIN="$<TARGET_FILE:thc-inspect>"
-                             INSPECT_NETUSER="$<TARGET_FILE:inspect_netuser>")
-  add_dependencies(test_inspect thc-inspect inspect_netuser)
+                             INSPECT_NETUSER="$<TARGET_FILE:inspect_netuser>" INSPECT_CLEAN="$<TARGET_FILE:inspect_clean>")
+  add_dependencies(test_inspect thc-inspect inspect_netuser inspect_clean)
   add_test(NAME inspect COMMAND test_inspect WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 endif()
 

@@ -40,7 +40,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev libfuse2 file
       - run: |
           cmake -S . -B build-inspect -DTHC_BUILD_APP=OFF -DTHC_BUILD_INSPECT=ON -DCMAKE_BUILD_TYPE=Release
-          cmake --build build-inspect --target thc-inspect test_inspect inspect_netuser
+          cmake --build build-inspect --target thc-inspect test_inspect inspect_netuser inspect_clean
           ctest --test-dir build-inspect -R inspect --output-on-failure
           BUILD_DIR=$PWD/build-inspect packaging/appimage/build-inspect.sh
           mkdir -p out && cp build-inspect/thc-inspect-*.AppImage out/
@@ -65,7 +65,7 @@ jobs:
       - uses: actions/checkout@v5
       - run: |
           cmake -S . -B build-inspect -DTHC_BUILD_APP=OFF -DCMAKE_BUILD_TYPE=Release
-          cmake --build build-inspect --target thc-inspect test_inspect inspect_netuser
+          cmake --build build-inspect --target thc-inspect test_inspect inspect_netuser inspect_clean
           ctest --test-dir build-inspect -R inspect --output-on-failure
           mkdir -p out && cp build-inspect/thc-inspect out/thc-inspect-0.2.0-macos-$(uname -m)
       - uses: actions/upload-artifact@v4
