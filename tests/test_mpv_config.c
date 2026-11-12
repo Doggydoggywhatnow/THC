@@ -139,14 +139,15 @@ int main(void)
         MpvConfIssue is[16];
         int n = h ? mpvconf_check(text, real_setter, h, is, 16) : -1;
         if (h) api.terminate_destroy(h);
-        if (n != 5) for (int i = 0; i < n; i++) fprintf(stderr, "issue: line %d %s kind %d\n", is[i].line, is[i].option, is[i].kind);
-        CHECK(n == 5);
-        if (n == 5) {
+        if (n != 6) for (int i = 0; i < n; i++) fprintf(stderr, "issue: line %d %s kind %d\n", is[i].line, is[i].option, is[i].kind);
+        CHECK(n == 6);
+        if (n == 6) {
             CHECK(is[0].line == 3 && is[0].kind == MCK_THC_CONTROLLED);
             CHECK(is[1].line == 4 && is[1].kind == MCK_OSC_OPTION);
             CHECK(is[2].line == 5 && is[2].kind == MCK_OSC_OPTION);
             CHECK(is[3].line == 6 && is[3].kind == MCK_OSC_OPTION);
             CHECK(is[4].line == 7 && is[4].kind == MCK_NOT_FOUND);   /* drag-to-pan: not in this MPV */
+            CHECK(is[5].line == 8 && is[5].kind == MCK_THC_CONTROLLED);   /* screenshot-format is THC's now (#25) */
         }
     }
 
@@ -210,6 +211,26 @@ int main(void)
         CHECK(video_is_url("https://x/y") && video_is_url("rtsp://x") && video_is_url("ftp://x"));
         CHECK(!video_is_url("file:///a/b.mp4") && !video_is_url("/a/b.mp4") && !video_is_url("C:\\v\\a.mp4") &&
               !video_is_url("relative/a.mp4") && !video_is_url(""));
+    }
+
+    /* 7. screenshots go to THC's folder, format and template, even when mpv.conf says otherwise (#25) */
+    write_file("mpvcfg_thc/mpv.conf", "ao=null\nscreenshot-directory=/tmp\nscreenshot-format=jpg\nscreenshot-template=other\n");
+    {
+        VideoSession s;
+        VideoOptions o = { "mpvcfg_thc", 0, true, 0, false, true, "mpvcfg_shots/nested", "webp", "%{media-title}-%P" };
+        CHECK(video_play(&s, &api, THC_TEST_DATA "/tone.mp3", &o));
+        if (s.h) {
+            char *v = api.get_property_string(s.h, "screenshot-directory");
+            CHECK(v && strstr(v, "mpvcfg_shots/nested"));
+            if (v) api.free(v);
+            CHECK(str_is(&s, "screenshot-format", "webp"));
+            CHECK(str_is(&s, "screenshot-template", "%{media-title}-%P"));
+            video_stop(&s);
+        }
+        SDL_PathInfo pi;
+        CHECK(SDL_GetPathInfo("mpvcfg_shots/nested", &pi) && pi.type == SDL_PATHTYPE_DIRECTORY);   /* created */
+        SDL_RemovePath("mpvcfg_shots/nested");
+        SDL_RemovePath("mpvcfg_shots");
     }
 
     SDL_RemovePath("mpvcfg_thc/mpv.conf");

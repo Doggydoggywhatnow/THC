@@ -18,6 +18,7 @@ typedef enum Screen {
     SCREEN_VIDEO,
     SCREEN_MUSIC,
     SCREEN_BOOKS,
+    SCREEN_SHOTS,
     SCREEN_SETTINGS
 } Screen;
 
@@ -103,7 +104,9 @@ typedef struct App {
 /* main.c */
 void app_toast(App *a, const char *fmt, ...);
 void app_export_history(App *a, bool json);
-enum { CONFIRM_CLEAR_HISTORY = 1, CONFIRM_CLEAR_QUEUE, CONFIRM_RESTORE };
+enum { CONFIRM_CLEAR_HISTORY = 1, CONFIRM_CLEAR_QUEUE, CONFIRM_RESTORE, CONFIRM_DELETE_SHOT };
+bool screenshots_back(void);
+void screenshots_confirmed_delete(App *a);
 enum { DLG_BACKUP = 100, DLG_RESTORE };   /* folder dialogs that are not a library folder */
 void app_pick_backup_folder(App *a, bool restore);
 void app_confirm(App *a, int action, int arg, const char *title, const char *body, const char *yes);
@@ -238,6 +241,7 @@ void fmt_time(double secs, char *buf, size_t cap);
 void screen_setup(App *a);
 void portal_video(App *a, SDL_FRect area);
 void portal_music(App *a, SDL_FRect area);
+void portal_screenshots(App *a, SDL_FRect area);
 void portal_books(App *a, SDL_FRect area);
 void screen_settings(App *a, SDL_FRect area);
 

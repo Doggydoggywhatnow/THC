@@ -30,7 +30,9 @@ static const struct { Screen s; const char *label; UiIcon icon; } k_tabs[] = {
     { SCREEN_VIDEO, "Video", ICON_FILM },
     { SCREEN_MUSIC, "Music", ICON_NOTE },
     { SCREEN_BOOKS, "Audiobooks", ICON_BOOK },
+    { SCREEN_SHOTS, "Screenshots", ICON_CAMERA },
 };
+#define NTABS ((int)(sizeof k_tabs / sizeof k_tabs[0]))
 
 void chrome_topbar(App *a)
 {
@@ -60,9 +62,14 @@ void chrome_topbar(App *a)
     x += lw + dp(ui, 36);
 
     /* portal tabs */
-    for (int i = 0; i < 3; i++) {
+    /* when the window is narrow only the selected tab keeps its label, the others are icons */
+    float need = x + dp(ui, 150);
+    for (int i = 0; i < NTABS; i++) need += ui_text_w(ui, FONT_BOLD, TS_BODY, k_tabs[i].label) + dp(ui, 60);
+    bool compact = need > (float)ui->w;
+    for (int i = 0; i < NTABS; i++) {
         bool sel = a->screen == k_tabs[i].s;
-        float tw = ui_text_w(ui, FONT_BOLD, TS_BODY, k_tabs[i].label) + dp(ui, 52);
+        bool label = !compact || sel;
+        float tw = label ? ui_text_w(ui, FONT_BOLD, TS_BODY, k_tabs[i].label) + dp(ui, 52) : dp(ui, 46);
         SDL_FRect r = { x, (h - dp(ui, 40)) / 2, tw, dp(ui, 40) };
         Uint32 id = ui_idi("tab", i);
         UiItemState st = ui_item(ui, id, r);
@@ -71,9 +78,12 @@ void chrome_topbar(App *a)
         else if (hv > 0.01f) ui_fill(ui, r, with_alpha(t->surface_hi, (Uint8)(255 * hv)), r.h / 2);
         Color fg = sel ? t->bg2 : t->text;
         float is = dp(ui, 18);
-        ui_icon(ui, k_tabs[i].icon, (SDL_FRect){ r.x + dp(ui, 14), r.y + (r.h - is) / 2, is, is }, fg);
-        ui_text_center(ui, FONT_BOLD, TS_BODY, (SDL_FRect){ r.x + dp(ui, 38), r.y, r.w - dp(ui, 46), r.h }, fg,
-                       k_tabs[i].label, false);
+        ui_icon(ui, k_tabs[i].icon, (SDL_FRect){ label ? r.x + dp(ui, 14) : r.x + (r.w - is) / 2, r.y + (r.h - is) / 2, is, is }, fg);
+        if (label)
+            ui_text_center(ui, FONT_BOLD, TS_BODY, (SDL_FRect){ r.x + dp(ui, 38), r.y, r.w - dp(ui, 46), r.h }, fg,
+                           k_tabs[i].label, false);
+        else
+            { if (st.hover || st.focused) ui_tooltip(ui, r, k_tabs[i].label); }
         if (st.focused) ui_focus_ring(ui, r, r.h / 2);
         if (st.activated) app_go(a, k_tabs[i].s);
         x += tw + dp(ui, 8);

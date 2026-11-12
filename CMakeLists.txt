@@ -131,6 +131,7 @@ add_library(thc_core STATIC
   src/mpvconf.c
   src/ontop.c
   src/queue.c
+  src/screenshots.c
   src/search.c
   src/settings.c
   src/tags.c
@@ -165,6 +166,7 @@ if(THC_BUILD_APP)
     src/player.c
     src/portal_books.c
     src/portal_music.c
+    src/portal_screenshots.c
     src/portal_video.c
     src/scan.c
     src/tagcache.c

@@ -44,6 +44,7 @@ typedef enum Action {
     ACT_QUEUE_REMOVE,
     ACT_SEARCH,
     ACT_ONTOP,
+    ACT_PORTAL_SHOTS,
     ACT_COUNT
 } Action;
 
@@ -53,6 +54,9 @@ typedef struct ActionInfo {
     const char *def;      /* default key name (SDL key names) */
 } ActionInfo;
 extern const ActionInfo k_actions[ACT_COUNT];
+
+enum { SHOT_PNG = 0, SHOT_JPG, SHOT_WEBP };
+#define SCREENSHOT_DEFAULT_TEMPLATE "%{media-title}-%P"
 
 /* Kinds of media with their own history switch. */
 enum { KIND_VIDEO = 0, KIND_MUSIC = 1, KIND_BOOK = 2, KIND_COUNT };
@@ -138,6 +142,10 @@ typedef struct Settings {
     /* Always on top (THC's MPV window) */
     int video_ontop, video_ontop_macos_level;
     bool video_ontop_ignore_fullscreen;
+    /* Screenshots (MPV's s key): folder, format, name template */
+    char screenshot_dir[THC_PATH_MAX];       /* empty = <data>/screenshots */
+    int screenshot_format;                   /* SHOT_PNG / SHOT_JPG / SHOT_WEBP */
+    char screenshot_template[96];            /* empty = SCREENSHOT_DEFAULT_TEMPLATE */
 
     /* Hotkeys: SDL key names, e.g. "Space", "Ctrl+Right" */
     char hotkey[ACT_COUNT][32];

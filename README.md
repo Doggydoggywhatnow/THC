@@ -152,6 +152,10 @@ Sorting only changes what you see in THC:
 - **Move a show to another section** from its page (for example, a cartoon that was detected as Television). THC remembers this in its settings file; your folders stay exactly as they are.
 - **Browse folders** on the video home page shows your folders exactly as they are on disk.
 
+## Screenshots (0.3.0)
+
+Press `S` in the MPV window and the picture is saved in THC's own `screenshots/` folder, never next to your videos. The **Screenshots** tab (hotkey `4`, remappable) shows them newest first with the video title and time; select one to see it larger, open the folder, copy its path or delete it (after a confirmation, and only files inside that folder can be deleted). Settings, Playback sets the folder, format (PNG by default, JPG or WebP) and the file name template. These three are THC's: `screenshot-directory`, `screenshot-format` and `screenshot-template` in `mpv.conf` are ignored.
+
 ## Queue, search, history and more (0.2.0)
 
 - **Queue:** the Queue button (hotkey `Q`) opens a panel with one queue for music and audiobooks and one for video. Add songs, albums, episodes, seasons, shows or books with the Add buttons or the right-click menu (also the Menu key); "Play next" puts something right after the current item. Reorder by dragging the grip or with Alt+Up/Down, remove with Delete, shuffle, repeat, Export and Import as M3U8 (the system file dialog). Played items stay above the current one as a backlog (kept between sessions only if you turn that on). Videos in the queue play one after another in a single window.
@@ -421,7 +425,7 @@ Everything lives in your OS's standard data directory:
 | macOS | `~/Library/Application Support/THC/THC/` |
 | Windows | `%APPDATA%\THC\THC\` |
 
-Inside it: `settings.ini` (plain text, editable while THC is closed), `history.db` (watch history), and `mpv/` (THC's own MPV configuration: `mpv.conf`, `input.conf`, `scripts/`, `shaders/`).
+Inside it: `settings.ini` (plain text, editable while THC is closed), `history.db` (watch history), `screenshots/` (pictures taken with MPV's `S` key), and `mpv/` (THC's own MPV configuration: `mpv.conf`, `input.conf`, `scripts/`, `shaders/`).
 
 **Same folder for every package.** The .deb, AppImage, tarball, Alpine and Void packages, a build from source, and the Windows and macOS builds all use the folder above, so switching between them keeps your settings and history. Installing, upgrading and uninstalling never touch it: none of THC's package scripts removes it (to start fresh, delete the folder yourself). The planned Snap runs confined and keeps its data in its own folder under `~/snap/`, which other packages do not share; use **Back up and restore** to move between a Snap and anything else.
 

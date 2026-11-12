@@ -50,7 +50,7 @@ static void write_file(const char *path, const char *text)
 
 int main(void)
 {
-    if (system("rm -rf insp_fx insp_media insp_snap.txt; mkdir -p insp_fx/mpv insp_media/sub")) {}
+    if (system("rm -rf insp_fx insp_media insp_snap.txt; mkdir -p insp_fx/mpv insp_fx/screenshots insp_media/sub")) {}
 
     /* a history database with a few rows */
     char err[256];
@@ -62,12 +62,14 @@ int main(void)
         history_close(h);
     }
     write_file("insp_fx/settings.ini", "mpv_block_network=true\n");
+    write_file("insp_fx/screenshots/Show-00_01_02.png", "png");
 
     /* clean data, the tool's own program (no network imports): pass */
     int rc = run("%s --data insp_fx --exe %s", INSPECT_BIN, INSPECT_CLEAN);
     CHECK(rc == 0);
     CHECK(strstr(out, "history.db") && strstr(out, "schema version: 2") && strstr(out, "history: 2 rows"));
     CHECK(strstr(out, "Result: pass"));
+    CHECK(strstr(out, "screenshots/Show-00_01_02.png"));     /* screenshots are listed with the other files THC writes (#25) */
     CHECK(!strstr(out, "Shows/A/a.mkv"));                  /* titles stay hidden by default */
     CHECK(run("%s --data insp_fx --exe %s --show-titles", INSPECT_BIN, INSPECT_CLEAN) == 0 && strstr(out, "Shows/A/a.mkv"));
 

@@ -36,6 +36,7 @@ const ActionInfo k_actions[ACT_COUNT] = {
     { "queue_remove", "Remove from the queue", "Delete" },
     { "search", "Search music", "/" },
     { "video_ontop", "Video window on top", "Ctrl+T" },
+    { "portal_screenshots", "Go to Screenshots", "4" },
 };
 
 /* ---- table-driven settings (the 0.2.0 additions) ---- */
@@ -59,6 +60,7 @@ static const char *const n_keys[] = { "off", "focused", "global", NULL };
 static const char *const n_titles[] = { "full", "playing-only", NULL };
 static const char *const n_ontop[] = { "off", "playing", "always", NULL };
 static const char *const n_level[] = { "window", "system", NULL };
+static const char *const n_shot[] = { "png", "jpg", "webp", NULL };
 
 #define B(key, field, def) { key, ST_BOOL, offsetof(Settings, field), def, 0, 1, NULL, true }
 #define I(key, field, def, lo, hi) { key, ST_INT, offsetof(Settings, field), def, lo, hi, NULL, true }
@@ -87,6 +89,7 @@ static const SettingDef k_defs[] = {
     I("mediakeys_seek_seconds", mediakeys_seek_seconds, 10, 5, 60),
     E("video_ontop", video_ontop, 0, n_ontop), E("video_ontop_macos_level", video_ontop_macos_level, 0, n_level),
     B("video_ontop_ignore_fullscreen", video_ontop_ignore_fullscreen, 1),
+    E("screenshot_format", screenshot_format, 0, n_shot),
 };
 #undef B
 #undef I
@@ -171,7 +174,8 @@ static bool key_known(const char *k)
     static const char *const fixed[] = {
         "setup_done", "music_dir", "video_dir", "books_dir", "sort_mode", "watched_threshold", "volume", "book_speed",
         "skip_seconds", "libmpv_path", "theme", "accent", "text_scale", "ui_scale", "font_path", "high_contrast",
-        "reduced_motion", "screen_reader", "remember_history", "video_thumbs", "last_portal", NULL
+        "reduced_motion", "screen_reader", "remember_history", "video_thumbs", "last_portal", "screenshot_dir",
+        "screenshot_template", NULL
     };
     for (int i = 0; fixed[i]; i++)
         if (!strcmp(k, fixed[i])) return true;
@@ -233,7 +237,9 @@ bool settings_load(Settings *s, const char *path)
         else if (!strcmp(k, "screen_reader")) s->screen_reader = parse_bool(v);
         else if (!strcmp(k, "remember_history")) { legacy_remember = true; legacy_value = parse_bool(v); }
         else if (!strcmp(k, "video_thumbs")) s->video_thumbs = parse_bool(v);
-        else if (!strcmp(k, "last_portal")) s->last_portal = (int)clampd(atoi(v), 0, 2);
+        else if (!strcmp(k, "last_portal")) s->last_portal = (int)clampd(atoi(v), 0, 3);
+        else if (!strcmp(k, "screenshot_dir")) STR(screenshot_dir);
+        else if (!strcmp(k, "screenshot_template")) STR(screenshot_template);
         else if (parse_def(s, k, v, &seen_history_key)) { /* a table-driven setting */ }
         else if (!strncmp(k, "section.", 8)) {
             for (int i = 0; i < SECTION_COUNT; i++)
@@ -297,6 +303,8 @@ bool settings_save(const Settings *s, const char *path)
         else if (d->type == ST_INT) fprintf(f, "%s = %d\n", d->key, *(int *)p);
         else fprintf(f, "%s = %s\n", d->key, d->names[*(int *)p]);
     }
+    fprintf(f, "screenshot_dir = %s\n", s->screenshot_dir);
+    fprintf(f, "screenshot_template = %s\n", s->screenshot_template);
     fprintf(f, "\n[hotkeys]\n");
     for (int i = 0; i < ACT_COUNT; i++) fprintf(f, "hotkey.%s = %s\n", k_actions[i].key, s->hotkey[i]);
     fprintf(f, "\n[state]\n");

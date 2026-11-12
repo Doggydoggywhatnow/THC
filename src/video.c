@@ -151,6 +151,13 @@ bool video_play(VideoSession *s, const MpvApi *api, const char *path, const Vide
         api->set_property_string(s->h, "save-position-on-quit", "no");
         api->set_property_string(s->h, "watch-later-directory", wl);
         if (opt->block_network) block_network_options(api, s->h, true);
+        /* MPV's s key saves into THC's folder, whatever mpv.conf says (properties win over the config) */
+        if (opt->screenshot_dir && *opt->screenshot_dir) {
+            SDL_CreateDirectory(opt->screenshot_dir);
+            api->set_property_string(s->h, "screenshot-directory", opt->screenshot_dir);
+            if (opt->screenshot_format) api->set_property_string(s->h, "screenshot-format", opt->screenshot_format);
+            if (opt->screenshot_template) api->set_property_string(s->h, "screenshot-template", opt->screenshot_template);
+        }
         char sb[64];
         SDL_snprintf(sb, sizeof sb, "%.3f", opt->start > 1.0 ? opt->start : 0.0);
         api->set_property_string(s->h, "start", sb);

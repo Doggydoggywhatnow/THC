@@ -29,6 +29,10 @@ add_executable(test_backup test_backup.c)
 target_link_libraries(test_backup PRIVATE thc_core)
 add_test(NAME backup COMMAND test_backup WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
 
+add_executable(test_screenshots test_screenshots.c)
+target_link_libraries(test_screenshots PRIVATE thc_core)
+add_test(NAME screenshots COMMAND test_screenshots WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR})
+
 add_executable(test_ontop test_ontop.c)
 target_link_libraries(test_ontop PRIVATE thc_core)
 add_test(NAME ontop COMMAND test_ontop)

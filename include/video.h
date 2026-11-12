@@ -48,6 +48,9 @@ typedef struct VideoOptions {
     uint32_t wake_event;     /* SDL user event pushed when mpv has news */
     bool chain;              /* keep the window open between files (video queue) */
     bool block_network;      /* no ytdl, no URL playlists, no network protocols (wins over mpv.conf) */
+    const char *screenshot_dir;      /* where MPV's s key saves (created if missing); NULL = leave MPV's */
+    const char *screenshot_format;   /* "png", "jpg" or "webp" */
+    const char *screenshot_template; /* MPV template */
 } VideoOptions;
 
 /* True for "scheme://..." (other than file://). */

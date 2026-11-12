@@ -8,6 +8,7 @@
  * history. The player bar at the bottom is drawn here too. */
 #include "app.h"
 #include "mediakeys.h"
+#include "screenshots.h"
 #include "ontop.h"
 #include "audio.h"
 #include "queue.h"
@@ -183,7 +184,7 @@ static bool start_audio(App *a, const QueueItem *it, double start)
     bool use_mpv = a->have_mpv && (!engine_ok || book);
     char err[256] = "";
     if (use_mpv) {
-        VideoOptions o = { a->mpv_dir, start, true, a->mpv_event, false, a->set.mpv_block_network };
+        VideoOptions o = { a->mpv_dir, start, true, a->mpv_event, false, a->set.mpv_block_network, NULL, NULL, NULL };
         if (video_play(&P.mpv, &a->mpv, it->path, &o)) {
             P.ab = BK_MPV;
             video_set_volume(&P.mpv, a->set.volume);
@@ -242,7 +243,11 @@ static bool start_video_window(App *a, const QueueItem *it, double start)
         ok = video_load(&a->video, it->path, start);
     } else {
         if (a->video.h) video_stop(&a->video);
-        VideoOptions o = { a->mpv_dir, start, false, a->mpv_event, true, a->set.mpv_block_network };
+        char shots[THC_PATH_MAX];
+        screenshot_dir_resolve(a->data_dir, a->set.screenshot_dir, shots, sizeof shots);
+        VideoOptions o = { a->mpv_dir, start, false, a->mpv_event, true, a->set.mpv_block_network,
+                           shots, screenshot_format_name(a->set.screenshot_format),
+                           screenshot_template(a->set.screenshot_template) };
         ok = video_play(&a->video, &a->mpv, it->path, &o);
         if (!ok) app_toast(a, "%s", a->video.error);
     }
@@ -252,6 +257,13 @@ static bool start_video_window(App *a, const QueueItem *it, double start)
     }
     P.video_idle = false;
     apply_ontop(a);
+    {   /* say so if screenshots cannot be saved, instead of failing silently */
+        char shots[THC_PATH_MAX];
+        screenshot_dir_resolve(a->data_dir, a->set.screenshot_dir, shots, sizeof shots);
+        SDL_PathInfo pi;
+        if (!SDL_GetPathInfo(shots, &pi) || pi.type != SDL_PATHTYPE_DIRECTORY)
+            app_toast(a, "Screenshots cannot be saved: the folder could not be created");
+    }
     if (start > 0) {
         char t[32];
         fmt_time(start, t, sizeof t);
@@ -305,7 +317,7 @@ static bool start_item(App *a, int qid, int idx)
     P.music_suspended = false;
     if (plan.backend == BACKEND_MPV_AUDIO && it->kind == QK_VIDEO) {
         /* listen-only video from the music queue */
-        VideoOptions o = { a->mpv_dir, start, true, a->mpv_event, false, a->set.mpv_block_network };
+        VideoOptions o = { a->mpv_dir, start, true, a->mpv_event, false, a->set.mpv_block_network, NULL, NULL, NULL };
         stop_audio(a);
         if (!video_play(&P.mpv, &a->mpv, it->path, &o)) {
             app_toast(a, "Could not play %s", it->title);

@@ -109,6 +109,7 @@ static void run_confirmed(App *a)
     case CONFIRM_CLEAR_QUEUE:
         queue_confirmed_clear(a, a->confirm.arg);
         break;
+    case CONFIRM_DELETE_SHOT: screenshots_confirmed_delete(a); break;
     case CONFIRM_RESTORE: {
         BackupOptions opt = { a->bk_history, a->bk_screens };
         char err[256] = "";
@@ -155,7 +156,7 @@ void app_go(App *a, Screen s)
         return;
     }
     if (a->screen == SCREEN_MUSIC && a->set.search_clear_on_leave) music_search_clear();
-    if (s >= SCREEN_VIDEO && s <= SCREEN_BOOKS) {
+    if (s >= SCREEN_VIDEO && s <= SCREEN_SHOTS) {
         a->last_portal = s;
         a->set.last_portal = s - SCREEN_VIDEO;
     }
@@ -354,6 +355,7 @@ static bool handle_hotkey(App *a, const SDL_KeyboardEvent *k)
         case ACT_PORTAL_VIDEO: app_go(a, SCREEN_VIDEO); return true;
         case ACT_PORTAL_MUSIC: app_go(a, SCREEN_MUSIC); return true;
         case ACT_PORTAL_BOOKS: app_go(a, SCREEN_BOOKS); return true;
+        case ACT_PORTAL_SHOTS: app_go(a, SCREEN_SHOTS); return true;
         case ACT_SETTINGS: app_go(a, SCREEN_SETTINGS); return true;
         case ACT_TOGGLE_THEME: toggle_theme(a); return true;
         case ACT_SEARCH:
@@ -396,6 +398,7 @@ static void go_back(App *a)
     case SCREEN_VIDEO: nav_pop(a, &a->vnav); break;
     case SCREEN_MUSIC: nav_pop(a, &a->mnav); break;
     case SCREEN_BOOKS: nav_pop(a, &a->bnav); break;
+    case SCREEN_SHOTS: screenshots_back(); break;
     case SCREEN_SETTINGS: app_go(a, a->last_portal ? a->last_portal : SCREEN_VIDEO); break;
     default: break;
     }
@@ -428,6 +431,7 @@ static void frame(App *a)
         case SCREEN_VIDEO: portal_video(a, area); break;
         case SCREEN_MUSIC: portal_music(a, area); break;
         case SCREEN_BOOKS: portal_books(a, area); break;
+        case SCREEN_SHOTS: portal_screenshots(a, area); break;
         case SCREEN_SETTINGS: screen_settings(a, area); break;
         default: break;
         }

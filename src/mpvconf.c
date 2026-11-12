@@ -14,7 +14,7 @@ static const char *const k_osc_options[] = {
 };
 
 static const char *const k_thc_controlled[] = {
-    "resume-playback", "save-position-on-quit", "watch-later-directory", "start", "ontop", "ontop-level", NULL
+    "resume-playback", "save-position-on-quit", "watch-later-directory", "start", "ontop", "ontop-level", "screenshot-directory", "screenshot-format", "screenshot-template", NULL
 };
 
 /* Names the mpv.conf parser accepts as aliases but the client API does not. */

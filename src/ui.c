@@ -1358,6 +1358,14 @@ void ui_icon(Ui *ui, UiIcon icon, SDL_FRect b, Color c)
             polyline(ui, t, 4, w, c);
         }
         break;
+    case ICON_CAMERA:
+        ui_stroke(ui, (SDL_FRect){ X(0.10f), Y(0.28f), s * 0.80f, s * 0.54f }, c, s * 0.10f, w);
+        {
+            float t[] = { X(0.30f), Y(0.28f), X(0.36f), Y(0.18f), X(0.64f), Y(0.18f), X(0.70f), Y(0.28f) };
+            polyline(ui, t, 4, w, c);
+        }
+        ui_stroke(ui, (SDL_FRect){ X(0.36f), Y(0.36f), s * 0.28f, s * 0.28f }, c, s * 0.14f, w);
+        break;
     case ICON_BACK: {
         float p[] = { X(0.62f), Y(0.20f), X(0.32f), Y(0.50f), X(0.62f), Y(0.80f) };
         polyline(ui, p, 3, s * 0.11f, c);

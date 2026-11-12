@@ -211,6 +211,8 @@ static void page_library(App *a, Layout *L)
     L->y += dp(ui, 46) + L->gap;
 }
 
+static void choice(App *a, Layout *L, const char *id, const char *label, const char *const *opts, int n, int *v);
+
 static void page_playback(App *a, Layout *L)
 {
     Ui *ui = &a->ui;
@@ -245,6 +247,22 @@ static void page_playback(App *a, Layout *L)
     if (ui_slider(ui, ui_id("set-speed"), next_row(a, L, 0), "Audiobook speed", &spd, 0.5f, 3.0f, 0.05f, "%.2fx")) {
         a->set.book_speed = spd;
         app_save_settings(a);
+    }
+    group(a, L, "Screenshots", "MPV's S key saves into THC's own folder (never next to your videos) and the pictures show in the Screenshots tab.");
+    {
+        char before[THC_PATH_MAX];
+        SDL_strlcpy(before, a->set.screenshot_dir, sizeof before);
+        ui_textfield(ui, ui_id("set-shot-dir"), next_row(a, L, dp(ui, 52)), a->set.screenshot_dir, sizeof a->set.screenshot_dir,
+                     "Folder (empty = THC's data folder / screenshots)");
+        if (strcmp(before, a->set.screenshot_dir)) app_save_settings(a);
+        static const char *const fmts[] = { "PNG", "JPG", "WebP" };
+        choice(a, L, "set-shot-format", "Format", fmts, 3, &a->set.screenshot_format);
+        char tb[96];
+        SDL_strlcpy(tb, a->set.screenshot_template, sizeof tb);
+        ui_textfield(ui, ui_id("set-shot-template"), next_row(a, L, dp(ui, 52)), a->set.screenshot_template, sizeof a->set.screenshot_template,
+                     "File name template (empty = " SCREENSHOT_DEFAULT_TEMPLATE ")");
+        if (strcmp(tb, a->set.screenshot_template)) app_save_settings(a);
+        note(a, L, ICON_SPARK, "These three options are THC's: \"screenshot-directory\", \"screenshot-format\" and \"screenshot-template\" in mpv.conf are ignored. They apply to the next video you start.");
     }
     note(a, L, ICON_SPARK, "Audio effect plugins are planned for a later release.");
 }
