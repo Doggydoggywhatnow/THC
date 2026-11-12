@@ -90,6 +90,12 @@ int main(void)
     char out2[1024];
     CHECK(backup_create("bk_data", h, "bk_dest", &all, "0.3.0", out2, sizeof out2, err, sizeof err));
     CHECK(strcmp(out, out2) != 0);                           /* a second backup in the same second gets its own folder */
+    /* inspect first: opening the copy below may leave SQLite's -wal and -shm files next to it */
+    BackupInfo info;
+    CHECK(backup_inspect(out2, "0.3.0", &info, err, sizeof err));
+    CHECK(info.valid && info.has_mpv && info.has_history && info.has_screenshots && !info.newer);
+    CHECK_STR(info.version, "0.3.0");
+    CHECK(info.nskipped == 0);
     snprintf(p, sizeof p, "%s/history.db", out2);
     History *copy = history_open(p, err, sizeof err);
     CHECK(copy != NULL);
@@ -101,12 +107,6 @@ int main(void)
     snprintf(p, sizeof p, "%s/screenshots/nsfw", out2);
     CHECK(!exists(p));
 
-    /* inspect */
-    BackupInfo info;
-    CHECK(backup_inspect(out2, "0.3.0", &info, err, sizeof err));
-    CHECK(info.valid && info.has_mpv && info.has_history && info.has_screenshots && !info.newer);
-    CHECK_STR(info.version, "0.3.0");
-    CHECK(info.nskipped == 0);
 
     /* a folder with no settings.ini is refused with a clear message */
     CHECK(!backup_inspect("bk_media", "0.3.0", &info, err, sizeof err));

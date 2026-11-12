@@ -5,7 +5,7 @@ int main(void)
 {
     const char *path = "thc_test_settings.ini";
     remove(path);
-    Settings s, t;
+    static Settings s, t;
     settings_defaults(&s);
     CHECK(!settings_load(&s, path)); /* missing file keeps defaults */
     CHECK_NEAR(s.watched_threshold, 0.90);
@@ -112,7 +112,7 @@ int main(void)
                   "nsfw_pin_hash = abc123\nweird key with spaces = some value = with equals\n", nf);
             fclose(nf);
         }
-        Settings n;
+        static Settings n;
         settings_defaults(&n);
         CHECK(settings_load(&n, newer));
         CHECK(n.volume == 33);                              /* known keys still apply */
@@ -123,19 +123,19 @@ int main(void)
         CHECK(!strstr(n.unknown, "volume"));                /* known keys are not "unknown" */
         n.volume = 44;                                      /* a known key changes... */
         CHECK(settings_save(&n, newer));
-        Settings m;
+        static Settings m;
         settings_defaults(&m);
         CHECK(settings_load(&m, newer));
         CHECK(m.volume == 44);
         CHECK(strcmp(m.unknown, n.unknown) == 0);           /* ...the unknown ones are untouched, same order */
         CHECK(strstr(m.unknown, "future_flag") < strstr(m.unknown, "hotkey.teleport"));
         CHECK(settings_save(&m, newer));                    /* a second round trip is stable */
-        Settings k;
+        static Settings k;
         settings_defaults(&k);
         CHECK(settings_load(&k, newer));
         CHECK(strcmp(k.unknown, n.unknown) == 0);
         /* a file with nothing unknown writes no extra section */
-        Settings plain;
+        static Settings plain;
         settings_defaults(&plain);
         CHECK(settings_save(&plain, newer));
         FILE *rf = fopen(newer, "rb");
@@ -155,7 +155,7 @@ int main(void)
     }
     /* NSFW portal keys (#13): off by default, every key round-trips, nothing leaks into the unknown keys */
     {
-        Settings a, b;
+        static Settings a, b;
         settings_defaults(&a);
         CHECK(!a.nsfw_enabled && a.nsfw_tab == NSFW_TAB_VISIBLE && a.nsfw_hide_stops_playback && !a.nsfw_record_history);
         CHECK(a.nsfw_clear_thumbs_on_exit && !a.nsfw_confirm_before_open && a.nsfw_mask_titles && !a.nsfw_rules_enabled);

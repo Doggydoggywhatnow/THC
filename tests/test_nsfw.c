@@ -291,7 +291,7 @@ int main(void)
     }
     /* the PIN is never in settings.ini; only the salted hash is */
     {
-        Settings st;
+        static Settings st;
         settings_defaults(&st);
         uint8_t salt[PIN_SALT_BYTES] = { 9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 1, 2, 3, 4, 5, 6 };
         pin_make("hunter2-secret", salt, st.nsfw_pin_salt, st.nsfw_pin_hash);
@@ -300,7 +300,7 @@ int main(void)
         FILE *pf = fopen("nsfw_pin_test.ini", "rb");
         if (pf) { size_t got = fread(buf, 1, sizeof buf - 1, pf); buf[got] = 0; fclose(pf); }
         CHECK(!strstr(buf, "hunter2") && strstr(buf, st.nsfw_pin_hash) && strstr(buf, st.nsfw_pin_salt));
-        Settings back;
+        static Settings back;
         settings_defaults(&back);
         CHECK(settings_load(&back, "nsfw_pin_test.ini") && pin_verify("hunter2-secret", back.nsfw_pin_salt, back.nsfw_pin_hash));
         CHECK(!pin_verify("hunter3", back.nsfw_pin_salt, back.nsfw_pin_hash));

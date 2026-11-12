@@ -125,7 +125,7 @@ int main(void)
     CHECK(!mpvconf_is_thc_controlled("screenshot-jpeg-quality"));
 
     /* settings round trip */
-    Settings a, b;
+    static Settings a, b;
     settings_defaults(&a);
     CHECK(a.screenshot_format == SHOT_PNG && !a.screenshot_dir[0] && !a.screenshot_template[0]);
     CHECK_STR(k_actions[ACT_PORTAL_SHOTS].def, "4");

@@ -3,7 +3,7 @@
 
 int main(void)
 {
-    Settings s;
+    static Settings s;
     settings_defaults(&s);
     NowPlaying np;
 

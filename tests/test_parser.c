@@ -178,7 +178,7 @@ int main(void)
     library_clear(&lib);
 
     /* Presentation overrides: move Avatar to Anime, hide Paddington 2. */
-    Settings set;
+    static Settings set;
     settings_defaults(&set);
     settings_set_override(&set, "0:Cartoons/Avatar", SECTION_ANIME);
     settings_set_override(&set, "0:Paddington 2.mkv", -1);
